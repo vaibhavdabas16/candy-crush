@@ -1,0 +1,41 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env_local/
+
+# Build and packaging outputs
+build/
+dist/
+*.egg-info/
+
+# Training outputs
+models/
+logs/
+checkpoints/
+runs/
+tensorboard/
+wandb/
+
+# Model artifacts
+*.pt
+*.pth
+*.ckpt
+*.zip
+
+# Local config and secrets
+.env
+.env.*
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
