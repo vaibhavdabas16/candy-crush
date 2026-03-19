@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT))
 from agents.ppo_agent import make_ppo
 from env.candy_env import CandyEnv
 from utils.seed import set_global_seed
+from utils.tensorboard import make_run_dir
 
 
 class RewardLoggerCallback:
@@ -32,6 +33,10 @@ class RewardLoggerCallback:
                     self.current_rewards[idx] += float(reward)
                     if dones[idx]:
                         self.episode_rewards.append(self.current_rewards[idx])
+                        self.logger.record(
+                            "rollout/episode_reward_custom",
+                            self.current_rewards[idx],
+                        )
                         self.current_rewards[idx] = 0.0
                 return True
 
@@ -41,7 +46,16 @@ class RewardLoggerCallback:
 def train(args: argparse.Namespace) -> None:
     set_global_seed(args.seed)
     env = CandyEnv(max_moves=args.max_moves)
-    model = make_ppo(env, gamma=args.gamma, use_maskable=not args.no_maskable, seed=args.seed)
+    tb_run_dir = make_run_dir(ROOT / args.log_dir, "ppo")
+    from stable_baselines3.common.logger import configure
+
+    model = make_ppo(
+        env,
+        gamma=args.gamma,
+        use_maskable=not args.no_maskable,
+        seed=args.seed,
+    )
+    model.set_logger(configure(str(tb_run_dir), ["stdout", "tensorboard"]))
 
     reward_logger = RewardLoggerCallback()
     model.learn(total_timesteps=args.timesteps, callback=reward_logger.callback)
@@ -60,6 +74,7 @@ def train(args: argparse.Namespace) -> None:
 
     print(f"Saved PPO model to {model_path}")
     print(f"Saved training log to {log_path}")
+    print(f"Saved TensorBoard logs to {tb_run_dir}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -71,6 +86,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-maskable", action="store_true")
     parser.add_argument("--model-path", type=str, default="models/ppo")
     parser.add_argument("--log-path", type=str, default="logs/ppo_rewards.csv")
+    parser.add_argument("--log_dir", type=str, default="logs/tensorboard")
     return parser.parse_args()
 
 
