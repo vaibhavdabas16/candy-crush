@@ -226,6 +226,7 @@ class CandyViewer:
                 color = self.COLORS[candy % len(self.COLORS)]
                 self.pygame.draw.ellipse(self.screen, color, candy_rect)
                 self.pygame.draw.ellipse(self.screen, (255, 255, 255), candy_rect, width=2)
+                self._draw_special_marker((row, col), candy_rect)
 
                 if clear_mask is not None and clear_mask[row, col]:
                     overlay = self.pygame.Surface((rect.width, rect.height), self.pygame.SRCALPHA)
@@ -250,6 +251,23 @@ class CandyViewer:
             help_text = "agent mode | R reset | Esc quit"
         self.screen.blit(self.font.render(title, True, self.TEXT), (self.config.margin, 24))
         self.screen.blit(self.small_font.render(help_text, True, self.MUTED), (self.config.margin, 58))
+
+    def _draw_special_marker(self, pos: tuple[int, int], rect) -> None:
+        special = int(self.env.specials[pos])
+        if special == self.env.NORMAL:
+            return
+
+        cx, cy = rect.center
+        if special == self.env.STRIPED_HORIZONTAL:
+            self.pygame.draw.line(self.screen, (255, 255, 255), (rect.left, cy), (rect.right, cy), 4)
+        elif special == self.env.STRIPED_VERTICAL:
+            self.pygame.draw.line(self.screen, (255, 255, 255), (cx, rect.top), (cx, rect.bottom), 4)
+        elif special == self.env.WRAPPED:
+            wrapped_rect = rect.inflate(-12, -12)
+            self.pygame.draw.rect(self.screen, (255, 255, 255), wrapped_rect, width=4, border_radius=6)
+        elif special == self.env.BLACK:
+            self.pygame.draw.circle(self.screen, (20, 20, 24), rect.center, rect.width // 3)
+            self.pygame.draw.circle(self.screen, (255, 255, 255), rect.center, rect.width // 3, 3)
 
     def _cell_rect(self, row: int, col: int):
         x = self.config.margin + col * self.config.cell_size
