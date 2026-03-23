@@ -186,19 +186,51 @@ class CandyViewer:
             self.pygame.display.flip()
             self.clock.tick(self.config.fps)
 
-    def _animate_fall(self, start: np.ndarray, end: np.ndarray, frames: int = 18) -> None:
+    def _animate_fall(self, start: np.ndarray, end: np.ndarray, frames: int = 36) -> None:
+        # For each column, track which candies survived and how far they fell
+        fall_offsets = {}
+        
+        for c in range(self.env.grid_size):
+            # Get non-negative candies from start board (candies that weren't matched)
+            start_col = start[:, c]
+            survived_candies = [(r, start_col[r]) for r in range(self.env.grid_size) if start_col[r] >= 0]
+            
+            if not survived_candies:
+                continue
+                
+            # In the end board, the survived candies have settled to the bottom of the column
+            end_col = end[:, c]
+            end_candies = [(r, end_col[r]) for r in range(self.env.grid_size) if end_col[r] >= 0]
+            
+            # The survived candies appear in the same order but lower in the end board
+            # Find offset for each survivor
+            num_survived = len(survived_candies)
+            if num_survived > 0:
+                # Survived candies are at the bottom of the end column
+                start_end_row = self.env.grid_size - num_survived
+                for i, (orig_row, candy_val) in enumerate(survived_candies):
+                    final_row = start_end_row + i
+                    if final_row > orig_row:
+                        fall_distance = (final_row - orig_row) * self.config.cell_size
+                        fall_offsets[(final_row, c)] = fall_distance
+
+        # If no candies fell, skip animation
+        if not fall_offsets:
+            self._draw(end)
+            return
+
+        # Smooth animation of falling candies
         for frame in range(frames + 1):
             t = frame / frames
-            if t < 0.5:
-                self._draw(start)
-            else:
-                drop = int((1.0 - t) * self.config.cell_size * 2)
-                offsets = {
-                    (r, c): (0, -drop)
-                    for r in range(self.env.grid_size)
-                    for c in range(self.env.grid_size)
-                }
-                self._draw(end, offsets=offsets)
+            # Use smoothstep easing for natural motion
+            eased_t = t * t * (3 - 2 * t)
+            
+            current_offsets = {}
+            for (r, c), fall_dist in fall_offsets.items():
+                # Animate from -fall_dist (above) to 0 (final position)
+                current_offsets[(r, c)] = (0, -fall_dist * (1 - eased_t))
+            
+            self._draw(end, offsets=current_offsets)
             self.pygame.display.flip()
             self.clock.tick(self.config.fps)
 
