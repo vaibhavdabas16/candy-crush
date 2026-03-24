@@ -11,12 +11,26 @@ from agents.dqn_agent import DQNAgent
 from agents.ppo_agent import load_ppo
 from env.candy_env import CandyEnv
 
+ASSETS_DIR = Path(__file__).resolve().parent
+SPRITE_PATH = ASSETS_DIR / "candy_sprites.png"
+BOARD_BG_PATH = ASSETS_DIR / "board_bg.png"
+
+SPRITE_CENTERS = [
+    (140, 140),
+    (320, 140),
+    (500, 140),
+    (140, 440),
+    (320, 440),
+    (500, 440),
+]
+SPRITE_CROP_RADIUS = 95
+
 
 @dataclass
 class ViewerConfig:
-    cell_size: int = 72
-    margin: int = 28
-    top_bar: int = 92
+    cell_size: int = 80
+    margin: int = 32
+    top_bar: int = 100
     fps: int = 60
     agent_delay: float = 0.35
 
@@ -24,17 +38,20 @@ class ViewerConfig:
 class CandyViewer:
     COLORS = [
         (235, 72, 78),
-        (63, 145, 245),
         (75, 190, 110),
+        (63, 145, 245),
         (248, 214, 76),
         (176, 95, 224),
         (246, 139, 57),
     ]
-    BG = (24, 26, 31)
-    GRID = (60, 64, 74)
+    BG = (18, 20, 28)
+    PANEL = (30, 34, 46)
+    GRID = (48, 54, 70)
+    GRID_HI = (70, 78, 98)
     TEXT = (240, 241, 245)
     MUTED = (174, 179, 190)
-    SELECTED = (255, 255, 255)
+    ACCENT = (255, 215, 96)
+    SELECTED = (255, 230, 120)
     MATCH = (255, 255, 255)
 
     def __init__(
@@ -63,6 +80,8 @@ class CandyViewer:
         self.obs, self.info = self.env.reset(seed=0)
         self.done = False
         self.last_step_time = 0.0
+        self.candy_sprites = self._load_candy_sprites()
+        self.board_bg = self._load_board_bg()
 
     def run(self) -> None:
         running = True
@@ -154,7 +173,7 @@ class CandyViewer:
 
         self.obs, reward, terminated, truncated, self.info = self.env.step(action)
         self.done = terminated or truncated
-        self._animate_fall(swapped, self.env.board.copy())
+        self._animate_fall(swapped, self.env.board.copy(), match_mask)
 
     def _animate_swap(
         self,
@@ -186,53 +205,104 @@ class CandyViewer:
             self.pygame.display.flip()
             self.clock.tick(self.config.fps)
 
-    def _animate_fall(self, start: np.ndarray, end: np.ndarray, frames: int = 36) -> None:
-        # For each column, track which candies survived and how far they fell
-        fall_offsets = {}
-        
-        for c in range(self.env.grid_size):
-            # Get non-negative candies from start board (candies that weren't matched)
-            start_col = start[:, c]
-            survived_candies = [(r, start_col[r]) for r in range(self.env.grid_size) if start_col[r] >= 0]
-            
-            if not survived_candies:
-                continue
-                
-            # In the end board, the survived candies have settled to the bottom of the column
-            end_col = end[:, c]
-            end_candies = [(r, end_col[r]) for r in range(self.env.grid_size) if end_col[r] >= 0]
-            
-            # The survived candies appear in the same order but lower in the end board
-            # Find offset for each survivor
-            num_survived = len(survived_candies)
-            if num_survived > 0:
-                # Survived candies are at the bottom of the end column
-                start_end_row = self.env.grid_size - num_survived
-                for i, (orig_row, candy_val) in enumerate(survived_candies):
-                    final_row = start_end_row + i
-                    if final_row > orig_row:
-                        fall_distance = (final_row - orig_row) * self.config.cell_size
-                        fall_offsets[(final_row, c)] = fall_distance
+    def _animate_fall(
+        self,
+        start: np.ndarray,
+        end: np.ndarray,
+        clear_mask: np.ndarray | None = None,
+        frames: int = 18,
+    ) -> None:
+        grid = self.env.grid_size
+        cell = self.config.cell_size
 
-        # If no candies fell, skip animation
-        if not fall_offsets:
+        if clear_mask is None or not clear_mask.any():
             self._draw(end)
-            return
-
-        # Smooth animation of falling candies
-        for frame in range(frames + 1):
-            t = frame / frames
-            # Use smoothstep easing for natural motion
-            eased_t = t * t * (3 - 2 * t)
-            
-            current_offsets = {}
-            for (r, c), fall_dist in fall_offsets.items():
-                # Animate from -fall_dist (above) to 0 (final position)
-                current_offsets[(r, c)] = (0, -fall_dist * (1 - eased_t))
-            
-            self._draw(end, offsets=current_offsets)
             self.pygame.display.flip()
             self.clock.tick(self.config.fps)
+            return
+
+        # Per-cell starting y-offset (pixels). Only cells that moved get an entry;
+        # unchanged cells stay stationary (no offset => no visual refresh).
+        move_offsets: dict[tuple[int, int], int] = {}
+        for c in range(grid):
+            cleared_col = clear_mask[:, c]
+            survivors = [r for r in range(grid) if not cleared_col[r]]
+            num_new = grid - len(survivors)
+            # Survivors land at bottom of column in same relative order.
+            for i, orig_r in enumerate(survivors):
+                final_r = num_new + i
+                if final_r != orig_r:
+                    move_offsets[(final_r, c)] = (orig_r - final_r) * cell  # negative y offset (starts higher)
+            # Newly-spawned cells fill top rows; start above the board.
+            for i in range(num_new):
+                move_offsets[(i, c)] = -(num_new - i) * cell
+
+        if not move_offsets:
+            self._draw(end)
+            self.pygame.display.flip()
+            self.clock.tick(self.config.fps)
+            return
+
+        for frame in range(frames + 1):
+            t = frame / frames
+            eased = t * t * (3 - 2 * t)  # smoothstep
+            offsets = {
+                pos: (0, total_y * (1 - eased))
+                for pos, total_y in move_offsets.items()
+            }
+            self._draw(end, offsets=offsets)
+            self.pygame.display.flip()
+            self.clock.tick(self.config.fps)
+
+    def _load_candy_sprites(self) -> list:
+        pygame = self.pygame
+        sprites: list = []
+        cell = self.config.cell_size
+        target = cell - 12
+        if not SPRITE_PATH.exists():
+            return []
+        sheet = pygame.image.load(str(SPRITE_PATH)).convert_alpha()
+        sheet = self._strip_white_background(sheet)
+        sheet_w, sheet_h = sheet.get_size()
+        scale_x = sheet_w / 640.0
+        scale_y = sheet_h / 640.0
+        for cx, cy in SPRITE_CENTERS:
+            r = int(SPRITE_CROP_RADIUS * scale_x)
+            x = int(cx * scale_x) - r
+            y = int(cy * scale_y) - r
+            w = h = r * 2
+            x = max(0, min(x, sheet_w - w))
+            y = max(0, min(y, sheet_h - h))
+            sub = sheet.subsurface(pygame.Rect(x, y, w, h)).copy()
+            scaled = pygame.transform.smoothscale(sub, (target, target))
+            sprites.append(scaled)
+        return sprites
+
+    def _strip_white_background(self, surface) -> "object":
+        """Remove the sprite sheet's white background plus its gray shadow halo.
+
+        The sheet has saturated-color candies on a near-white field with soft
+        gray drop shadows. Treat any low-saturation light pixel as background.
+        """
+        pygame = self.pygame
+        surface = surface.convert_alpha()
+        arr = pygame.surfarray.pixels_alpha(surface)
+        rgb = pygame.surfarray.pixels3d(surface).astype(np.int16)
+        r, g, b = rgb[:, :, 0], rgb[:, :, 1], rgb[:, :, 2]
+        max_c = np.maximum(np.maximum(r, g), b)
+        min_c = np.minimum(np.minimum(r, g), b)
+        saturation = max_c - min_c
+
+        background = (max_c > 190) & (saturation < 45)
+        arr[background] = 0
+
+        edge = (~background) & (max_c > 170) & (saturation < 70)
+        arr[edge] = (arr[edge].astype(np.int16) * 40 // 255).astype(arr.dtype)
+        del arr, rgb
+        return surface
+
+    def _load_board_bg(self):
+        return None
 
     def _draw(
         self,
@@ -242,47 +312,111 @@ class CandyViewer:
         clear_alpha: float = 1.0,
     ) -> None:
         offsets = offsets or {}
+        pygame = self.pygame
         self.screen.fill(self.BG)
         self._draw_header()
 
-        for row in range(self.env.grid_size):
-            for col in range(self.env.grid_size):
+        grid_size = self.env.grid_size
+        board_w = self.config.cell_size * grid_size
+        board_rect = pygame.Rect(
+            self.config.margin, self.config.top_bar, board_w, board_w
+        )
+        frame = board_rect.inflate(16, 16)
+        pygame.draw.rect(self.screen, self.PANEL, frame, border_radius=16)
+        pygame.draw.rect(self.screen, self.GRID_HI, frame, width=2, border_radius=16)
+
+        inner_pad = 4
+        inner_rect = board_rect.inflate(-inner_pad * 2, -inner_pad * 2)
+        pygame.draw.rect(self.screen, (22, 26, 38), inner_rect, border_radius=10)
+
+        tile_inset = 3
+        for row in range(grid_size):
+            for col in range(grid_size):
+                tile = self._cell_rect(row, col).inflate(-tile_inset * 2, -tile_inset * 2)
+                shade = self.GRID if (row + col) % 2 == 0 else self.GRID_HI
+                pygame.draw.rect(self.screen, shade, tile, border_radius=8)
+
+        prev_clip = self.screen.get_clip()
+        self.screen.set_clip(inner_rect)
+        for row in range(grid_size):
+            for col in range(grid_size):
                 candy = int(board[row, col])
                 if candy < 0:
                     continue
                 ox, oy = offsets.get((row, col), (0, 0))
                 rect = self._cell_rect(row, col).move(ox, oy)
-                self.pygame.draw.rect(self.screen, self.GRID, rect, border_radius=8)
-                inset = 9
-                candy_rect = rect.inflate(-inset * 2, -inset * 2)
-                color = self.COLORS[candy % len(self.COLORS)]
-                self.pygame.draw.ellipse(self.screen, color, candy_rect)
-                self.pygame.draw.ellipse(self.screen, (255, 255, 255), candy_rect, width=2)
+                candy_rect = rect.inflate(-6, -6)
+                self._draw_candy(candy, candy_rect)
                 self._draw_special_marker((row, col), candy_rect)
 
                 if clear_mask is not None and clear_mask[row, col]:
-                    overlay = self.pygame.Surface((rect.width, rect.height), self.pygame.SRCALPHA)
-                    overlay_alpha = int(190 * clear_alpha)
-                    overlay.fill((*self.MATCH, overlay_alpha))
+                    overlay = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+                    overlay_alpha = int(200 * clear_alpha)
+                    overlay.fill((255, 255, 210, overlay_alpha))
                     self.screen.blit(overlay, rect)
+        self.screen.set_clip(prev_clip)
 
         if self.selected is not None:
-            self.pygame.draw.rect(
+            sel_rect = self._cell_rect(*self.selected).inflate(4, 4)
+            pygame.draw.rect(
                 self.screen,
                 self.SELECTED,
-                self._cell_rect(*self.selected),
+                sel_rect,
                 width=4,
-                border_radius=8,
+                border_radius=10,
             )
 
+    def _draw_candy(self, candy: int, rect) -> None:
+        pygame = self.pygame
+        if self.candy_sprites:
+            sprite = self.candy_sprites[candy % len(self.candy_sprites)]
+            sprite_rect = sprite.get_rect(center=rect.center)
+            shadow = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
+            shadow.blit(sprite, (0, 0))
+            shadow.fill((0, 0, 0, 110), special_flags=pygame.BLEND_RGBA_MULT)
+            self.screen.blit(shadow, sprite_rect.move(2, 3))
+            self.screen.blit(sprite, sprite_rect)
+            return
+        color = self.COLORS[candy % len(self.COLORS)]
+        pygame.draw.ellipse(self.screen, color, rect)
+        pygame.draw.ellipse(self.screen, (255, 255, 255), rect, width=2)
+
     def _draw_header(self) -> None:
+        pygame = self.pygame
+        board_w = self.config.cell_size * self.env.grid_size
+        header_rect = pygame.Rect(
+            self.config.margin - 8,
+            16,
+            board_w + 16,
+            self.config.top_bar - 28,
+        )
+        pygame.draw.rect(self.screen, self.PANEL, header_rect, border_radius=12)
+        pygame.draw.rect(self.screen, self.GRID_HI, header_rect, width=2, border_radius=12)
+
         status = "done" if self.done else self.mode
-        title = f"score={self.env.score:.1f} moves={self.env.moves_left} mode={status}"
-        help_text = "manual: click adjacent candies | N random step | R reset | Esc quit"
+        score_text = f"Score: {self.env.score:.1f}"
+        moves_text = f"Moves left: {self.env.moves_left}"
+        mode_text = f"Mode: {status}"
+        help_text = "Click adjacent candies | N random | R reset | Esc quit"
         if self.mode != "manual":
-            help_text = "agent mode | R reset | Esc quit"
-        self.screen.blit(self.font.render(title, True, self.TEXT), (self.config.margin, 24))
-        self.screen.blit(self.small_font.render(help_text, True, self.MUTED), (self.config.margin, 58))
+            help_text = f"Agent: {self.mode} | R reset | Esc quit"
+
+        self.screen.blit(
+            self.font.render(score_text, True, self.ACCENT),
+            (header_rect.left + 14, header_rect.top + 8),
+        )
+        self.screen.blit(
+            self.font.render(moves_text, True, self.TEXT),
+            (header_rect.left + 200, header_rect.top + 8),
+        )
+        self.screen.blit(
+            self.font.render(mode_text, True, self.TEXT),
+            (header_rect.left + 420, header_rect.top + 8),
+        )
+        self.screen.blit(
+            self.small_font.render(help_text, True, self.MUTED),
+            (header_rect.left + 14, header_rect.top + 38),
+        )
 
     def _draw_special_marker(self, pos: tuple[int, int], rect) -> None:
         special = int(self.env.specials[pos])
