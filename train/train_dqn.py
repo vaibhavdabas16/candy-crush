@@ -8,6 +8,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+import numpy as np
+import torch
+
 from agents.dqn_agent import DQNAgent, DQNConfig
 from env.candy_env import CandyEnv
 from utils.seed import set_global_seed
@@ -31,29 +34,41 @@ def train(args: argparse.Namespace) -> None:
     rewards_log: list[dict[str, float | int]] = []
     recent_rewards: list[float] = []
     global_step = 0
+
     try:
         for episode in range(1, args.episodes + 1):
             obs, info = env.reset(seed=args.seed + episode)
             done = False
             episode_reward = 0.0
             losses: list[float] = []
+            q_means: list[float] = []
+            q_maxs: list[float] = []
+            invalid_steps = 0
+            cascade_rewards: list[float] = []
 
             while not done:
-                action = agent.select_action(obs, info["valid_action_mask"], training=True)
+                mask = info["valid_action_mask"]
+                action = agent.select_action(obs, mask, training=True)
                 next_obs, reward, terminated, truncated, next_info = env.step(action)
                 done = terminated or truncated
 
-                agent.store(
-                    obs,
-                    action,
-                    reward,
-                    next_obs,
-                    done,
-                    next_info["valid_action_mask"],
-                )
+                if next_info.get("invalid", False):
+                    invalid_steps += 1
+                if reward > 0:
+                    cascade_rewards.append(reward)
+
+                agent.store(obs, action, reward, next_obs, done, next_info["valid_action_mask"])
                 loss = agent.update()
                 if loss is not None:
                     losses.append(loss)
+
+                # Sample Q-value stats from current obs
+                with torch.no_grad():
+                    obs_t = torch.as_tensor(obs, dtype=torch.float32, device=agent.device).unsqueeze(0)
+                    q_vals = agent.q_net(obs_t).squeeze(0).cpu().numpy()
+                    valid_q = q_vals[mask.astype(bool)] if mask.any() else q_vals
+                    q_means.append(float(valid_q.mean()))
+                    q_maxs.append(float(valid_q.max()))
 
                 obs = next_obs
                 info = next_info
@@ -63,8 +78,16 @@ def train(args: argparse.Namespace) -> None:
             recent_rewards.append(episode_reward)
             if len(recent_rewards) > args.ma_window:
                 recent_rewards.pop(0)
+
             mean_loss = sum(losses) / len(losses) if losses else 0.0
             moving_average = sum(recent_rewards) / len(recent_rewards)
+            invalid_rate = invalid_steps / args.max_moves
+            mean_q = sum(q_means) / len(q_means) if q_means else 0.0
+            max_q = max(q_maxs) if q_maxs else 0.0
+            mean_cascade = sum(cascade_rewards) / len(cascade_rewards) if cascade_rewards else 0.0
+            num_cascades = len(cascade_rewards)
+            buffer_fill = len(agent.replay) / agent.config.buffer_size
+
             row = {
                 "episode": episode,
                 "reward": episode_reward,
@@ -74,15 +97,32 @@ def train(args: argparse.Namespace) -> None:
                 "steps": global_step,
             }
             rewards_log.append(row)
+
+            # Core learning metrics
             writer.add_scalar("train/episode_reward", episode_reward, episode)
             writer.add_scalar("train/moving_average_reward", moving_average, episode)
             writer.add_scalar("train/loss", mean_loss, episode)
             writer.add_scalar("train/epsilon", agent.epsilon(), episode)
 
+            # Action quality
+            writer.add_scalar("train/invalid_action_rate", invalid_rate, episode)
+            writer.add_scalar("train/valid_q_mean", mean_q, episode)
+            writer.add_scalar("train/valid_q_max", max_q, episode)
+
+            # Game dynamics
+            writer.add_scalar("train/cascade_reward_mean", mean_cascade, episode)
+            writer.add_scalar("train/cascades_per_episode", num_cascades, episode)
+
+            # Infrastructure
+            writer.add_scalar("train/buffer_fill_ratio", buffer_fill, episode)
+            writer.add_scalar("train/global_step", global_step, episode)
+
             if episode % args.log_every == 0 or episode == 1:
                 print(
                     f"episode={episode} reward={episode_reward:.1f} "
-                    f"ma={moving_average:.1f} epsilon={row['epsilon']:.3f} loss={mean_loss:.4f}"
+                    f"ma={moving_average:.1f} epsilon={row['epsilon']:.3f} "
+                    f"loss={mean_loss:.4f} invalid={invalid_rate:.2f} "
+                    f"q_mean={mean_q:.1f}"
                 )
     finally:
         writer.flush()
@@ -93,19 +133,12 @@ def train(args: argparse.Namespace) -> None:
     agent.save(model_path)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("w", newline="") as f:
-        writer = csv.DictWriter(
+        w = csv.DictWriter(
             f,
-            fieldnames=[
-                "episode",
-                "reward",
-                "moving_average_reward",
-                "epsilon",
-                "loss",
-                "steps",
-            ],
+            fieldnames=["episode", "reward", "moving_average_reward", "epsilon", "loss", "steps"],
         )
-        writer.writeheader()
-        writer.writerows(rewards_log)
+        w.writeheader()
+        w.writerows(rewards_log)
 
     print(f"Saved DQN model to {model_path}")
     print(f"Saved training log to {log_path}")
