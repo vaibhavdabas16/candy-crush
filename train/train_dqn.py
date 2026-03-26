@@ -100,6 +100,7 @@ def train(args: argparse.Namespace) -> None:
 
             # Core learning metrics
             writer.add_scalar("train/episode_reward", episode_reward, episode)
+            writer.add_scalar("charts/episode_reward", episode_reward, episode)
             writer.add_scalar("train/moving_average_reward", moving_average, episode)
             writer.add_scalar("train/loss", mean_loss, episode)
             writer.add_scalar("train/epsilon", agent.epsilon(), episode)
