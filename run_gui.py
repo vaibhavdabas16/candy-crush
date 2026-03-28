@@ -15,12 +15,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--agent",
-        choices=["manual", "random", "greedy", "dqn", "ppo"],
+        choices=["manual", "random", "greedy", "dqn", "ppo", "grpo"],
         default="manual",
     )
     parser.add_argument("--max-moves", type=int, default=20)
-    parser.add_argument("--dqn-path", type=str, default="models/dqn.pt")
-    parser.add_argument("--ppo-path", type=str, default="models/ppo")
+    parser.add_argument("--dqn-path",  type=str, default="models/dqn.pt")
+    parser.add_argument("--ppo-path",  type=str, default="models/ppo")
+    parser.add_argument("--grpo-path", type=str, default="models/grpo_candy.pt")
     parser.add_argument("--agent-delay", type=float, default=0.35)
     return parser.parse_args()
 
@@ -28,7 +29,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     env = CandyEnv(max_moves=args.max_moves)
-    policy = load_policy(args.agent, ROOT / args.dqn_path, ROOT / args.ppo_path, env)
+    policy = load_policy(args.agent, ROOT / args.dqn_path, ROOT / args.ppo_path, env, ROOT / args.grpo_path)
     viewer = CandyViewer(env, policy=policy, mode=args.agent)
     viewer.config.agent_delay = args.agent_delay
     viewer.run()

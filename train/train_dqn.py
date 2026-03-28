@@ -28,7 +28,14 @@ def train(args: argparse.Namespace) -> None:
     agent = DQNAgent(
         obs_dim=env.observation_space.shape[0],
         action_dim=env.action_space.n,
-        config=DQNConfig(gamma=args.gamma, lr=args.lr, batch_size=args.batch_size),
+        config=DQNConfig(
+            gamma=args.gamma,
+            lr=args.lr,
+            batch_size=args.batch_size,
+            epsilon_decay_steps=args.epsilon_decay_steps,
+            target_update_every=args.target_update_every,
+            buffer_size=args.buffer_size,
+        ),
     )
 
     rewards_log: list[dict[str, float | int]] = []
@@ -158,6 +165,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-path", type=str, default="models/dqn.pt")
     parser.add_argument("--log-path", type=str, default="logs/dqn_rewards.csv")
     parser.add_argument("--log_dir", type=str, default="logs/tensorboard")
+    parser.add_argument("--epsilon-decay-steps", type=int, default=15_000)
+    parser.add_argument("--target-update-every", type=int, default=500)
+    parser.add_argument("--buffer-size", type=int, default=50_000)
     return parser.parse_args()
 
 
