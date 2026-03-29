@@ -65,6 +65,8 @@ class RichRewardCallback:
 
                         ep_idx = len(self.episode_rewards)
                         self.logger.record("rollout/episode_reward", self._ep_reward)
+                        self.logger.record("rollout/episode_reward_custom", self._ep_reward)
+                        self.logger.record("charts/episode_reward", self._ep_reward)
                         self.logger.record("rollout/episode_length", ep_len)
                         self.logger.record("rollout/invalid_action_rate", invalid_rate)
                         self.logger.record("rollout/cascades_per_episode", self._ep_cascades)
