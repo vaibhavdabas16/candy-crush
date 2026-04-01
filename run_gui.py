@@ -11,6 +11,15 @@ from env.candy_env import CandyEnv
 from gui.viewer import CandyViewer, load_policy
 
 
+def repo_path_or_id(value: str) -> str | Path:
+    path = Path(value)
+    if path.is_absolute() or path.exists():
+        return path
+    if value.count("/") == 1 and not value.startswith("."):
+        return value
+    return ROOT / path
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -37,7 +46,7 @@ def main() -> None:
         ROOT / args.ppo_path,
         env,
         ROOT / args.grpo_path,
-        ROOT / args.llm_grpo_path,
+        repo_path_or_id(args.llm_grpo_path),
         args.llm_model_name,
     )
     viewer = CandyViewer(env, policy=policy, mode=args.agent)
