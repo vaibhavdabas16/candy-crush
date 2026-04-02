@@ -202,6 +202,8 @@ python train/train_llm_grpo_candy.py \
 
 The production adapter currently used by the GUI was trained from this flow and uploaded to Hugging Face as `arnavm7/candy-crush-qwen35-grpo-lora`.
 
+Evaluation results and strategy notes are documented in [docs/qwen_grpo_evaluation.md](docs/qwen_grpo_evaluation.md), including the fixed eval against greedy, random, PPO, and DQN, plus expected behavior when adding a new candy type.
+
 ## Evaluate
 
 ```bash
