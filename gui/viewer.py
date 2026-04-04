@@ -459,6 +459,10 @@ def load_policy(
     grpo_path: str | Path = "models/grpo_candy.pt",
     llm_grpo_path: str | Path = "models/llm_grpo_candy/qwen35_9b/final_plus30",
     llm_model_name: str = "Qwen/Qwen3.5-9B",
+    llm_use_4bit: bool = True,
+    llm_device: str = "auto",
+    llm_dtype: str = "auto",
+    llm_max_new_tokens: int = 32,
 ):
     agent_name = agent_name.lower()
     if agent_name == "manual":
@@ -491,5 +495,12 @@ def load_policy(
         )
         if not is_hf_repo_id and not path.exists():
             raise FileNotFoundError(f"LLM GRPO adapter not found: {path}")
-        return LLMGRPOAgent(llm_grpo_path if is_hf_repo_id else path, model_name=llm_model_name)
+        return LLMGRPOAgent(
+            llm_grpo_path if is_hf_repo_id else path,
+            model_name=llm_model_name,
+            use_4bit=llm_use_4bit,
+            device=llm_device,
+            dtype=llm_dtype,
+            max_new_tokens=llm_max_new_tokens,
+        )
     raise ValueError(f"Unknown agent: {agent_name}")

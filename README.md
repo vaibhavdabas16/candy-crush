@@ -168,6 +168,8 @@ SDL_VIDEODRIVER=dummy timeout 30 python run_gui.py \
 
 The GUI serializes the current board to text, asks Qwen plus the LoRA adapter for a command like `swap (3,5) (3,6)`, validates the parsed swap against `CandyEnv`, and falls back to the best immediate legal swap if the model output is not parseable.
 
+MacBook and CPU-only inference instructions are documented in [docs/mac_cpu_inference.md](docs/mac_cpu_inference.md). The short version is to use `--llm-no-4bit`; use `--llm-device mps --llm-dtype float16` on Apple Silicon and `--llm-device cpu --llm-dtype float32` on CPU-only machines.
+
 Controls:
 
 - Click two adjacent candies to swap in manual mode

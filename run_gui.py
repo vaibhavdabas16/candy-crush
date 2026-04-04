@@ -33,6 +33,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--grpo-path", type=str, default="models/grpo_candy.pt")
     parser.add_argument("--llm-grpo-path", type=str, default="models/llm_grpo_candy/qwen35_9b/final_plus30")
     parser.add_argument("--llm-model-name", type=str, default="Qwen/Qwen3.5-9B")
+    parser.add_argument("--llm-no-4bit", action="store_true")
+    parser.add_argument("--llm-device", choices=["auto", "cuda", "mps", "cpu"], default="auto")
+    parser.add_argument("--llm-dtype", choices=["auto", "float32", "float16", "bfloat16"], default="auto")
+    parser.add_argument("--llm-max-new-tokens", type=int, default=32)
     parser.add_argument("--agent-delay", type=float, default=0.35)
     return parser.parse_args()
 
@@ -48,6 +52,10 @@ def main() -> None:
         ROOT / args.grpo_path,
         repo_path_or_id(args.llm_grpo_path),
         args.llm_model_name,
+        not args.llm_no_4bit,
+        args.llm_device,
+        args.llm_dtype,
+        args.llm_max_new_tokens,
     )
     viewer = CandyViewer(env, policy=policy, mode=args.agent)
     viewer.config.agent_delay = args.agent_delay

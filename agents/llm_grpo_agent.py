@@ -18,6 +18,8 @@ class LLMGRPOAgent:
         model_name: str = "Qwen/Qwen3.5-9B",
         lora_rank: int = 64,
         use_4bit: bool = True,
+        device: str = "auto",
+        dtype: str = "auto",
         max_new_tokens: int = 32,
         temperature: float = 0.0,
     ) -> None:
@@ -25,6 +27,8 @@ class LLMGRPOAgent:
         self.model_name = model_name
         self.lora_rank = lora_rank
         self.use_4bit = use_4bit
+        self.device = device
+        self.dtype = dtype
         self.max_new_tokens = max_new_tokens
         self.temperature = temperature
         self.tokenizer = load_tokenizer(model_name)
@@ -34,8 +38,13 @@ class LLMGRPOAgent:
             lora_rank=lora_rank,
             use_4bit=use_4bit,
             beta_kl=0.0,
+            device=device,
+            dtype=dtype,
+            is_trainable=False,
         )
         self.model.eval()
+        if hasattr(self.model.config, "use_cache"):
+            self.model.config.use_cache = True
 
     def predict(self, obs: np.ndarray, env: CandyEnv | None = None, deterministic: bool = True) -> tuple[int, None]:
         if env is None:
