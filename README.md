@@ -168,7 +168,7 @@ SDL_VIDEODRIVER=dummy timeout 30 python run_gui.py \
 
 The GUI serializes the current board to text, asks Qwen plus the LoRA adapter for a command like `swap (3,5) (3,6)`, validates the parsed swap against `CandyEnv`, and falls back to the best immediate legal swap if the model output is not parseable.
 
-MacBook and CPU-only inference instructions are documented in [docs/mac_cpu_inference.md](docs/mac_cpu_inference.md). The short version is to use `--llm-no-4bit`; use `--llm-device mps --llm-dtype float16` on Apple Silicon and `--llm-device cpu --llm-dtype float32` on CPU-only machines.
+MacBook and CPU-only inference instructions are documented in [docs/mac_cpu_inference.md](docs/mac_cpu_inference.md). The most efficient non-CUDA path is the merged `Q4_K_M` GGUF documented in [docs/gguf_quantization.md](docs/gguf_quantization.md). The Transformers GUI path still uses the LoRA adapter directly; for that path use `--llm-no-4bit`, `--llm-device mps --llm-dtype float16` on Apple Silicon, and `--llm-device cpu --llm-dtype float32` on CPU-only machines.
 
 Controls:
 
