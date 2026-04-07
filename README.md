@@ -17,19 +17,20 @@ Implemented:
 - ASCII debug rendering with `env.render(mode="human")`
 - Pygame GUI for manual play and agent visualization
 - Mock LLM/GRPO scaffolding for future experiments
+- Qwen GRPO LoRA policy for text-based Candy Crush swap recommendation
 
 ## Setup
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-On macOS/Linux, activate with:
+On Windows, activate with:
 
 ```bash
-source .venv/bin/activate
+.venv\Scripts\activate
 ```
 
 ## Run A Smoke Test
@@ -116,7 +117,58 @@ python run_gui.py --agent random
 python run_gui.py --agent greedy
 python run_gui.py --agent dqn
 python run_gui.py --agent ppo
+python run_gui.py --agent llm_grpo
 ```
+
+## Run The Qwen GRPO Model In The GUI
+
+The trained LoRA adapter is hosted on Hugging Face:
+
+```text
+arnavm7/candy-crush-qwen35-grpo-lora
+```
+
+Fast path, using the adapter directly from Hugging Face:
+
+```bash
+python run_gui.py \
+  --agent llm_grpo \
+  --llm-grpo-path arnavm7/candy-crush-qwen35-grpo-lora \
+  --llm-model-name Qwen/Qwen3.5-9B \
+  --agent-delay 0.8
+```
+
+Local-cache path, useful for repeat runs and offline testing:
+
+```bash
+python - <<'PY'
+from huggingface_hub import snapshot_download
+
+snapshot_download(
+    repo_id="arnavm7/candy-crush-qwen35-grpo-lora",
+    local_dir="models/llm_grpo_candy/qwen35_9b/final_plus30",
+    ignore_patterns=["standalone/*"],
+)
+PY
+
+python run_gui.py \
+  --agent llm_grpo \
+  --llm-grpo-path models/llm_grpo_candy/qwen35_9b/final_plus30 \
+  --llm-model-name Qwen/Qwen3.5-9B \
+  --agent-delay 0.8
+```
+
+On a headless server, this verifies startup without opening a visible window:
+
+```bash
+SDL_VIDEODRIVER=dummy timeout 30 python run_gui.py \
+  --agent llm_grpo \
+  --llm-grpo-path arnavm7/candy-crush-qwen35-grpo-lora
+```
+
+The GUI serializes the current board to text, asks Qwen plus the LoRA adapter for a command like `swap (3,5) (3,6)`, validates the parsed swap against `CandyEnv`, and falls back to the best immediate legal swap if the model output is not parseable.
+
+MacBook and CPU-only inference instructions are documented in [docs/mac_cpu_inference.md](docs/mac_cpu_inference.md). The most efficient non-CUDA path is the merged `Q4_K_M` GGUF documented in [docs/gguf_quantization.md](docs/gguf_quantization.md). The Transformers GUI path still uses the LoRA adapter directly; for that path use `--llm-no-4bit`, `--llm-device mps --llm-dtype float16` on Apple Silicon, and `--llm-device cpu --llm-dtype float32` on CPU-only machines.
 
 Controls:
 
@@ -135,6 +187,25 @@ python train/train_grpo_stub.py
 
 The stub samples valid candidate actions, simulates immediate rewards, picks the best candidate, and writes `logs/grpo_stub.csv`. It does not call any API and does not perform policy optimization.
 
+## Train Qwen GRPO
+
+The Qwen trainer runs GRPO candidates and only promotes a candidate when its fixed eval beats the incumbent. It discards failed or non-improving checkpoints and uses `beta_kl=0`, so no reference model is loaded.
+
+```bash
+python train/train_llm_grpo_candy.py \
+  --model-name Qwen/Qwen3.5-9B \
+  --run-dir models/llm_grpo_candy/qwen35_9b \
+  --iterations 15 \
+  --lora-rank 64 \
+  --num-generations 8 \
+  --rollout-depth 1 \
+  --experiment-timeout-sec 600
+```
+
+The production adapter currently used by the GUI was trained from this flow and uploaded to Hugging Face as `arnavm7/candy-crush-qwen35-grpo-lora`.
+
+Evaluation results and strategy notes are documented in [docs/qwen_grpo_evaluation.md](docs/qwen_grpo_evaluation.md), including the fixed eval against greedy, random, PPO, and DQN, plus expected behavior when adding a new candy type.
+
 ## Evaluate
 
 ```bash
@@ -147,6 +218,7 @@ This evaluates:
 - Greedy policy
 - DQN, if `models/dqn.pt` exists
 - PPO, if `models/ppo.zip` exists
+- Qwen GRPO LoRA, when evaluated through the LLM trainer/eval path
 
 Metrics reported:
 
