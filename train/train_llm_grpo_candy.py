@@ -26,8 +26,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from trl import GRPOConfig, GRPOTrainer
 
 from agents.baselines import GreedyPolicy, RandomPolicy
-from agents.dqn_agent import DQNAgent
-from agents.ppo_agent import load_ppo
+from agents.saved_models import load_saved_policy, saved_policy_exists
 from env.candy_env import CandyEnv
 from utils.special_boards import SpecialInjectionConfig, reset_with_optional_specials
 from utils.state_to_text import state_to_text
@@ -388,12 +387,10 @@ def run_policy_episode(policy, seed: int, max_moves: int) -> tuple[float, int, i
 
 def evaluate_baselines(args: argparse.Namespace, seeds: list[int]) -> dict[str, dict[str, float]]:
     policies: dict[str, Any] = {"random": RandomPolicy(), "greedy": GreedyPolicy()}
-    dqn_path = ROOT / args.dqn_path
-    if dqn_path.exists():
-        policies["dqn"] = DQNAgent.load(dqn_path)
-    ppo_path = ROOT / args.ppo_path
-    if ppo_path.exists() or Path(str(ppo_path) + ".zip").exists():
-        policies["ppo"] = load_ppo(ppo_path, env=CandyEnv(max_moves=args.max_moves))
+    if saved_policy_exists("dqn", dqn_path=args.dqn_path):
+        policies["dqn"] = load_saved_policy("dqn", dqn_path=args.dqn_path)
+    if saved_policy_exists("ppo", ppo_path=args.ppo_path):
+        policies["ppo"] = load_saved_policy("ppo", ppo_path=args.ppo_path, env=CandyEnv(max_moves=args.max_moves))
 
     results = {}
     for name, policy in policies.items():
