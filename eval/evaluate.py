@@ -10,8 +10,7 @@ sys.path.insert(0, str(ROOT))
 import numpy as np
 
 from agents.baselines import GreedyPolicy, RandomPolicy
-from agents.dqn_agent import DQNAgent
-from agents.ppo_agent import load_ppo
+from agents.saved_models import load_saved_policy, saved_policy_exists
 from env.candy_env import CandyEnv
 from utils.metrics import summarize_scores
 from utils.seed import set_global_seed
@@ -111,20 +110,18 @@ def main(args: argparse.Namespace) -> None:
     all_scores["random"] = evaluate_policy("random", RandomPolicy(), args, writer)
     all_scores["greedy"] = evaluate_policy("greedy", GreedyPolicy(), args, writer)
 
-    dqn_path = ROOT / args.dqn_path
-    if dqn_path.exists():
-        dqn = DQNAgent.load(dqn_path)
+    if saved_policy_exists("dqn", dqn_path=args.dqn_path):
+        dqn = load_saved_policy("dqn", dqn_path=args.dqn_path)
         all_scores["dqn"] = evaluate_policy("dqn", dqn, args, writer)
     else:
-        print(f"dqn        | skipped, model not found at {dqn_path}")
+        print(f"dqn        | skipped, model not found at {ROOT / args.dqn_path}")
 
-    ppo_path = ROOT / args.ppo_path
-    if ppo_path.exists() or Path(str(ppo_path) + ".zip").exists():
+    if saved_policy_exists("ppo", ppo_path=args.ppo_path):
         env = CandyEnv(max_moves=args.max_moves)
-        ppo = load_ppo(ppo_path, env=env)
+        ppo = load_saved_policy("ppo", ppo_path=args.ppo_path, env=env)
         all_scores["ppo"] = evaluate_policy("ppo", ppo, args, writer)
     else:
-        print(f"ppo        | skipped, model not found at {ppo_path}.zip")
+        print(f"ppo        | skipped, model not found at {ROOT / args.ppo_path}.zip")
 
     # Side-by-side bar chart of average scores
     if len(all_scores) > 1:

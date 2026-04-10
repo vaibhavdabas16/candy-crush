@@ -7,10 +7,9 @@ from pathlib import Path
 import numpy as np
 
 from agents.baselines import GreedyPolicy, RandomPolicy
-from agents.dqn_agent import DQNAgent
 from agents.grpo_agent import GRPOAgent
 from agents.llm_grpo_agent import LLMGRPOAgent
-from agents.ppo_agent import load_ppo
+from agents.saved_models import load_saved_policy
 from env.candy_env import CandyEnv
 
 ASSETS_DIR = Path(__file__).resolve().parent
@@ -472,15 +471,9 @@ def load_policy(
     if agent_name == "greedy":
         return GreedyPolicy()
     if agent_name == "dqn":
-        path = Path(dqn_path)
-        if not path.exists():
-            raise FileNotFoundError(f"DQN model not found: {path}")
-        return DQNAgent.load(path)
+        return load_saved_policy("dqn", dqn_path=dqn_path)
     if agent_name == "ppo":
-        path = Path(ppo_path)
-        if not path.exists() and not Path(str(path) + ".zip").exists():
-            raise FileNotFoundError(f"PPO model not found: {path}.zip")
-        return load_ppo(path, env=env)
+        return load_saved_policy("ppo", ppo_path=ppo_path, env=env)
     if agent_name == "grpo":
         path = Path(grpo_path)
         if not path.exists():

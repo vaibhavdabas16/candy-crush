@@ -75,6 +75,24 @@ python train/train_ppo.py --no-maskable
 The model is saved to `models/ppo.zip`, and rewards are logged to `logs/ppo_rewards.csv`.
 TensorBoard logs are written under `logs/tensorboard/ppo-*`.
 
+## Reuse saved DQN/PPO checkpoints
+
+The reusable checkpoint loaders live in `agents/saved_models.py`:
+
+```python
+from agents.saved_models import load_saved_policy
+from env.candy_env import CandyEnv
+
+env = CandyEnv(max_moves=20)
+dqn = load_saved_policy("dqn")
+ppo = load_saved_policy("ppo", env=env)
+
+obs, info = env.reset(seed=0)
+action, _ = ppo.predict(obs, deterministic=True, action_masks=env.action_masks())
+```
+
+By default, DQN loads from `models/dqn.pt` and PPO loads from `models/ppo.zip`.
+
 ## TensorBoard
 
 Both training scripts create a fresh TensorBoard run directory by default:
