@@ -8,7 +8,7 @@ import numpy as np
 
 from agents.baselines import GreedyPolicy, RandomPolicy
 from agents.grpo_agent import GRPOAgent
-from agents.llm_grpo_agent import LLMGRPOAgent
+from agents.llm_grpo_gguf_agent import LLMGRPOGGUFAgent
 from agents.saved_models import load_saved_policy
 from env.candy_env import CandyEnv
 
@@ -143,9 +143,11 @@ class CandyViewer:
         self._animate_and_step(action)
 
     def _agent_action(self) -> int:
-        if isinstance(self.policy, (RandomPolicy, GreedyPolicy, DQNAgent, GRPOAgent, LLMGRPOAgent)):
+        try:
             action, _ = self.policy.predict(self.obs, env=self.env, deterministic=True)
             return int(action)
+        except TypeError:
+            pass
 
         try:
             action, _ = self.policy.predict(
@@ -462,6 +464,12 @@ def load_policy(
     llm_device: str = "auto",
     llm_dtype: str = "auto",
     llm_max_new_tokens: int = 32,
+    gguf_path: str | Path = "models/llm_grpo_candy/qwen35_9b/gguf/candy-crush-qwen35-grpo-Q4_K_M.gguf",
+    gguf_n_ctx: int = 4096,
+    gguf_n_threads: int | None = None,
+    gguf_n_gpu_layers: int = -1,
+    gguf_log_io: bool = False,
+    gguf_log_prompt: bool = False,
 ):
     agent_name = agent_name.lower()
     if agent_name == "manual":
@@ -480,6 +488,8 @@ def load_policy(
             raise FileNotFoundError(f"GRPO model not found: {path}")
         return GRPOAgent.load(path)
     if agent_name == "llm_grpo":
+        from agents.llm_grpo_agent import LLMGRPOAgent
+
         path = Path(llm_grpo_path)
         is_hf_repo_id = (
             isinstance(llm_grpo_path, str)
@@ -495,5 +505,18 @@ def load_policy(
             device=llm_device,
             dtype=llm_dtype,
             max_new_tokens=llm_max_new_tokens,
+        )
+    if agent_name == "llm_grpo_gguf":
+        path = Path(gguf_path)
+        if not path.exists():
+            raise FileNotFoundError(f"GGUF model not found: {path}")
+        return LLMGRPOGGUFAgent(
+            path,
+            n_ctx=gguf_n_ctx,
+            n_threads=gguf_n_threads,
+            n_gpu_layers=gguf_n_gpu_layers,
+            max_new_tokens=llm_max_new_tokens,
+            log_io=gguf_log_io,
+            log_prompt=gguf_log_prompt,
         )
     raise ValueError(f"Unknown agent: {agent_name}")
