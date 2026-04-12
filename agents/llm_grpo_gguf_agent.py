@@ -32,6 +32,20 @@ def _action_from_text(env: CandyEnv, text: str) -> int | None:
         return None
 
 
+def _pick_invalid_action(env: CandyEnv) -> int:
+    """Pick any action that is *not* legal on the current board.
+
+    Used when GRPO is run with no_fallback=True and the model output is
+    unparsable. Guarantees the env will apply invalid_penalty.
+    """
+    valid = set(int(a) for a in env.valid_actions())
+    n = int(env.action_space.n)
+    for a in range(n):
+        if a not in valid:
+            return a
+    return 0  # extreme edge case: every action valid
+
+
 def _prompt_for_env(env: CandyEnv) -> str:
     return (
         "Task: choose one legal Candy Crush swap. Coordinates are zero-indexed as (row,col).\n"
@@ -68,6 +82,7 @@ class LLMGRPOGGUFAgent:
         verbose: bool = False,
         log_io: bool = False,
         log_prompt: bool = False,
+        no_fallback: bool = False,
     ) -> None:
         from llama_cpp import Llama
 
@@ -79,7 +94,13 @@ class LLMGRPOGGUFAgent:
         self.temperature = temperature
         self.log_io = log_io
         self.log_prompt = log_prompt
+        self.no_fallback = no_fallback
         self._step = 0
+        self.parse_failures = 0
+        self.invalid_actions = 0
+        self.last_raw = ""
+        self.last_parsed_action: int | None = None
+        self.last_was_valid = False
 
         self.llm = Llama(
             model_path=str(self.gguf_path),
@@ -117,20 +138,39 @@ class LLMGRPOGGUFAgent:
         gen_s = time.time() - t0
 
         action = _action_from_text(env, text)
-        valid_action = action is not None and env.is_valid_action(action)
-        chosen = action if valid_action else None
-        fallback = None
+        parse_failed = action is None
+        valid_action = (action is not None) and env.is_valid_action(int(action))
+
+        self.last_raw = text
+        self.last_parsed_action = action
+        self.last_was_valid = bool(valid_action)
+        if parse_failed:
+            self.parse_failures += 1
         if not valid_action:
-            valid = env.valid_actions()
-            if valid:
-                fallback = max(valid, key=lambda a: env.simulate_action_reward(int(a)))
+            self.invalid_actions += 1
+
+        if self.no_fallback:
+            if action is not None:
+                chosen = int(action)
+                tag = "ok" if valid_action else "model-invalid"
             else:
-                fallback = int(env.action_space.sample())
-            chosen = fallback
+                chosen = _pick_invalid_action(env)
+                tag = "parse-fail"
+            fallback = None
+        else:
+            chosen = int(action) if valid_action else None
+            fallback = None
+            if not valid_action:
+                valid = env.valid_actions()
+                if valid:
+                    fallback = max(valid, key=lambda a: env.simulate_action_reward(int(a)))
+                else:
+                    fallback = int(env.action_space.sample())
+                chosen = fallback
+            tag = "ok" if valid_action else ("fallback-greedy" if fallback is not None else "random")
 
         if self.log_io:
             decoded = env.decode_action(int(chosen)) if chosen is not None else None
-            tag = "ok" if valid_action else ("fallback-greedy" if fallback is not None else "random")
             print(
                 f"[grpo-gguf step={self._step} {gen_s:.2f}s] "
                 f"raw={text.strip()!r} "
