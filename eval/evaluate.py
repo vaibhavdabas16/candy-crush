@@ -249,8 +249,11 @@ def main() -> None:
         print(f"\n>>> Evaluating: {name}")
         try:
             policy, grpo_agent = build_policy(name, args, env_for_init)
-        except FileNotFoundError as e:
+        except (FileNotFoundError, ModuleNotFoundError, ImportError) as e:
             print(f"  skipped: {e}")
+            continue
+        except Exception as e:  # noqa: BLE001
+            print(f"  skipped: failed to load {name}: {type(e).__name__}: {e}")
             continue
         summary = eval_policy(
             name,
