@@ -1,25 +1,127 @@
 # Candy Crush RL
-hii
-A complete Week 1 reinforcement learning project for an 8x8 Candy Crush-style environment.
 
-Implemented:
+A complete reinforcement learning project for an 8×8 Candy Crush-style environment, with classical RL baselines (random, greedy, DQN, PPO) and an LLM-based policy (Qwen 9B fine-tuned with GRPO, served as a Q4_K_M GGUF for CPU/Mac inference).
 
-- Gymnasium-compatible `CandyEnv`
-- 112 swap actions: 56 horizontal and 56 vertical
-- Match clearing, gravity, refill, and cascades
-- Rewards: `removed_candies^2 + 10` per cascade step
-- Invalid swap penalty: `-5`
-- DQN with replay buffer, target network, epsilon-greedy exploration, and action masking
-- PPO via Stable-Baselines3, with Maskable PPO from `sb3-contrib` when available
-- Random and greedy baseline policies
-- Training and evaluation scripts
-- TensorBoard logging for DQN and PPO
-- ASCII debug rendering with `env.render(mode="human")`
-- Pygame GUI for manual play and agent visualization
-- Mock LLM/GRPO scaffolding for future experiments
-- Qwen GRPO LoRA policy for text-based Candy Crush swap recommendation
+The trained models are already in this repository (`models/dqn.pt`, `models/ppo.zip`); the GRPO GGUF is downloaded on demand from Hugging Face. **No training is required to run the demos.**
 
-## Setup
+---
+
+## Quick Start (one command, fresh Ubuntu 22.04)
+
+Two end-to-end bash scripts. Each one creates its own venv, installs everything, and runs a full demo with a comparison table.
+
+```bash
+# 1) Baselines: random, greedy, DQN, PPO. Fast (~30 s on a clean machine).
+bash run.sh
+
+# 2) GRPO: heavy. Downloads a 5.3 GB GGUF, then runs the 9B model on CPU.
+#    Plan for ~3-5 minutes per seed of pure inference.
+bash run_grpo.sh
+```
+
+Both scripts use **only relative paths**, install only what they need (no leftover transformers/peft/datasets/pygame for the baselines run), and write a transcript + reward CSV under `./logs/`.
+
+### Why two scripts?
+
+The two paths have very different cost profiles, dependency sets, and runtime characteristics — keeping them apart means you can sanity-check the baselines in seconds without paying the GRPO cost, and the GRPO run is isolated in its own venv.
+
+| | `run.sh` (baselines) | `run_grpo.sh` (GRPO) |
+| --- | --- | --- |
+| Runtime | seconds per agent per seed | ~30-60 s per move (LLM inference) |
+| Disk | ~1.5 GB venv | ~5.3 GB GGUF download + ~500 MB venv |
+| Dependencies | `gymnasium`, `numpy`, `torch`, `stable-baselines3`, `sb3-contrib` | `gymnasium`, `numpy`, `huggingface_hub`, `llama-cpp-python` |
+| Models needed | `models/dqn.pt`, `models/ppo.zip` (already in repo) | `arnavm7/candy-crush-qwen35-grpo-lora` GGUF (auto-downloaded) |
+| venv | `.venv` | `.venv-grpo` |
+| Network | none | Hugging Face download on first run |
+
+`random` and `greedy` need no checkpoints at all; they're included in `run.sh` because they share the same dependency set as DQN/PPO.
+
+### What each script prints
+
+For every step, the ANSI board state followed by the action the agent took, the reward, and the running score — exactly what the Pygame GUI shows visually, but in the terminal so it works in a docker container with no display:
+
+```
+[step 1]
+Score: 0.0 | Moves left: 20 | Last action: None
+5. 3. 5. 1. 1. 0. 3. 4.
+1. 4. 5. 5. 3. 3. 5. 4.
+...
+action=40 swap (5, 5) <-> (5, 6)  reward=+65.00 score=65.00  moves_left=19
+```
+
+For GRPO the agent also prints the raw model output and the parsed action:
+
+```
+[grpo-gguf step=1 14.21s] raw='swap (5, 5) (5, 6)\nReason: This swap creates a match of three' parsed_action=40 valid=True chosen=40 ((5, 5), (5, 6)) [ok]
+```
+
+Each script ends with a comparison table (per-seed reward + average) and writes the same data to a CSV in `./logs/`.
+
+### Override flags
+
+```bash
+bash run.sh --seeds 10 11 12 --max-moves 30
+bash run_grpo.sh --seeds 0 1 --max-moves 20 --gguf-n-gpu-layers -1   # use GPU
+bash run_grpo.sh --no-greedy                                          # GRPO only
+```
+
+`--gguf-n-gpu-layers -1` offloads all layers to Metal/CUDA if available; the default is `0` (CPU only) so it works in a fresh docker container with no GPU.
+
+---
+
+## Repository layout
+
+```
+candy-crush-repo/
+├── env/candy_env.py           # Gymnasium-compatible 8x8 environment (112 swap actions)
+├── agents/
+│   ├── baselines.py           # RandomPolicy, GreedyPolicy
+│   ├── dqn_agent.py           # DQN with replay buffer, target net, action masking
+│   ├── ppo_agent.py           # PPO via stable-baselines3 (Maskable PPO if available)
+│   ├── grpo_agent.py          # GRPO policy
+│   ├── llm_grpo_agent.py      # Transformers/PEFT path for the Qwen LoRA adapter
+│   └── llm_grpo_gguf_agent.py # llama.cpp-backed Q4_K_M GGUF path (used by run_grpo.sh)
+├── train/                     # Training scripts (NOT used by run.sh / run_grpo.sh)
+├── eval/evaluate.py           # Fixed-board GRPO eval protocol (10 boards, full rollouts)
+├── scripts/
+│   ├── play_baselines_demo.py # Multi-agent terminal demo (random/greedy/DQN/PPO)
+│   └── play_grpo_demo.py      # GRPO terminal demo + greedy comparison
+├── gui/viewer.py              # Pygame visual viewer
+├── run_gui.py                 # GUI / terminal player (--no-gui mode)
+├── models/                    # Pre-trained checkpoints already shipped in the repo
+│   ├── dqn.pt
+│   └── ppo.zip
+├── requirements.txt           # Full dependency set (training + everything)
+├── requirements-baselines.txt # Minimal deps for run.sh
+├── requirements-grpo.txt      # Deps for run_grpo.sh
+├── run.sh                     # End-to-end baseline demo
+└── run_grpo.sh                # End-to-end GRPO demo
+```
+
+## The GRPO model
+
+The Qwen GRPO model lives at:
+
+> https://huggingface.co/arnavm7/candy-crush-qwen35-grpo-lora
+
+`run_grpo.sh` downloads the merged Q4_K_M GGUF (`gguf/candy-crush-qwen35-grpo-Q4_K_M.gguf`, ~5.3 GB) into `models/llm_grpo_candy/qwen35_9b/gguf/` on first run. The download is skipped on subsequent runs. The same Hugging Face repo also hosts the original LoRA adapter (`arnavm7/candy-crush-qwen35-grpo-lora`), which the older Transformers/PEFT path uses; the GGUF is the merged base + adapter for fast non-CUDA inference.
+
+---
+
+## Pre-trained models in the repo
+
+| File | What it is |
+| --- | --- |
+| `models/dqn.pt` | Trained DQN policy (replay buffer + target net + action masking) |
+| `models/ppo.zip` | Trained PPO policy (stable-baselines3, Maskable PPO when available) |
+
+These are loaded directly by `agents/saved_models.py` in the demo. **No training is required.** If you want to retrain from scratch see the `## Train DQN` and `## Train PPO` sections below — these are not part of the bash-script demo.
+
+---
+
+## Manual / advanced usage
+
+### Setup
 
 ```bash
 python -m venv .venv

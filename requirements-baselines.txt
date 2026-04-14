@@ -1,0 +1,8 @@
+# Minimal deps for the random/greedy/DQN/PPO baselines demo (run.sh).
+# Intentionally excludes transformers, peft, trl, datasets, pygame, llama-cpp-python.
+gymnasium>=0.29.1
+numpy>=2.0
+torch>=2.1
+stable-baselines3>=2.2.1
+sb3-contrib>=2.2.1
+cloudpickle>=3.0
