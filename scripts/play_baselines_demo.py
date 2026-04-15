@@ -8,7 +8,6 @@ averages, and the same data is written to logs/baselines_comparison.csv.
 from __future__ import annotations
 
 import argparse
-import csv
 import sys
 from pathlib import Path
 
@@ -99,17 +98,6 @@ def print_table(agents_used: list[str], seeds: list[int], results: dict[str, dic
     print("=" * width)
 
 
-def write_csv(path: Path, agents_used: list[str], seeds: list[int], results: dict[str, dict[int, float]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["agent", "seed", "reward"])
-        for a in agents_used:
-            for s in seeds:
-                if s in results[a]:
-                    w.writerow([a, s, results[a][s]])
-
-
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
@@ -154,9 +142,6 @@ def main() -> None:
             results[name][seed] = reward
 
     print_table(agents_used, args.seeds, results)
-    csv_path = Path(args.log_dir) / "baselines_comparison.csv"
-    write_csv(csv_path, agents_used, args.seeds, results)
-    print(f"\nCSV: {csv_path}")
 
 
 if __name__ == "__main__":

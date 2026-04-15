@@ -19,7 +19,7 @@ bash run.sh
 bash run_grpo.sh
 ```
 
-Both scripts use **only relative paths**, install only what they need (no leftover transformers/peft/datasets/pygame for the baselines run), and write a transcript + reward CSV under `./logs/`.
+Both scripts use **only relative paths**, install only what they need (no leftover transformers/peft/datasets/pygame for the baselines run), and write the full terminal transcript under `./logs/`.
 
 ### Why two scripts?
 
@@ -55,7 +55,7 @@ For GRPO the agent also prints the raw model output and the parsed action:
 [grpo-gguf step=1 14.21s] raw='swap (5, 5) (5, 6)\nReason: This swap creates a match of three' parsed_action=40 valid=True chosen=40 ((5, 5), (5, 6)) [ok]
 ```
 
-Each script ends with a comparison table (per-seed reward + average) and writes the same data to a CSV in `./logs/`.
+Each script ends with a comparison table (per-seed reward + average).
 
 ### Override flags
 

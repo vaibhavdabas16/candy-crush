@@ -9,7 +9,6 @@ logs/grpo_comparison.csv.
 from __future__ import annotations
 
 import argparse
-import csv
 import sys
 from pathlib import Path
 
@@ -106,16 +105,6 @@ def print_table(seeds: list[int], grpo_rewards: dict[int, float], greedy_rewards
     print("=" * width)
 
 
-def write_csv(path: Path, seeds: list[int], grpo_rewards: dict[int, float], greedy_rewards: dict[int, float]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["agent", "seed", "reward"])
-        for s in seeds:
-            w.writerow(["grpo_gguf", s, grpo_rewards[s]])
-            w.writerow(["greedy", s, greedy_rewards[s]])
-
-
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
@@ -189,10 +178,6 @@ def main() -> None:
         f"\ngrpo_gguf parse_failures={agent.parse_failures}  "
         f"invalid_actions={agent.invalid_actions}"
     )
-
-    csv_path = Path(args.log_dir) / "grpo_comparison.csv"
-    write_csv(csv_path, args.seeds, grpo_rewards, greedy_rewards if not args.no_greedy else {s: float('nan') for s in args.seeds})
-    print(f"CSV: {csv_path}")
 
 
 if __name__ == "__main__":

@@ -61,4 +61,3 @@ python -u scripts/play_baselines_demo.py "$@" 2>&1 | tee logs/run_baselines.log
 echo
 echo "==> Done."
 echo "   Full transcript : logs/run_baselines.log"
-echo "   Reward CSV      : logs/baselines_comparison.csv"

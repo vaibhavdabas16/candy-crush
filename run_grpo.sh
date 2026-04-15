@@ -65,4 +65,3 @@ python -u scripts/play_grpo_demo.py "$@" 2>&1 | tee logs/run_grpo.log
 echo
 echo "==> Done."
 echo "   Full transcript : logs/run_grpo.log"
-echo "   Reward CSV      : logs/grpo_comparison.csv"
