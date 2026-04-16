@@ -1,0 +1,10 @@
+# Heavy training deps - only installed by run.sh in the final GRPO
+# training stage. Not needed for inference of the pre-trained GGUF model
+# or for the DQN / PPO training stages.
+transformers>=4.51
+peft>=0.15
+trl>=0.15
+datasets>=2.18
+accelerate>=0.27
+safetensors>=0.4
+sentencepiece>=0.1

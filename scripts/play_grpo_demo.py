@@ -31,6 +31,7 @@ def ensure_gguf(path: str) -> Path:
     print(f"GGUF not found at {p}. Downloading from Hugging Face: {GGUF_REPO_ID}/{GGUF_FILENAME}")
     from huggingface_hub import hf_hub_download
 
+    p.parent.mkdir(parents=True, exist_ok=True)
     local = hf_hub_download(
         repo_id=GGUF_REPO_ID,
         filename=GGUF_FILENAME,

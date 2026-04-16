@@ -1,8 +1,12 @@
-# Minimal deps for the random/greedy/DQN/PPO baselines demo (run.sh).
-# Intentionally excludes transformers, peft, trl, datasets, pygame, llama-cpp-python.
+# Baseline + GRPO inference deps used by run.sh.
+# Sufficient for: random / greedy / DQN training / PPO training, plus
+# evaluating the pre-trained Qwen GRPO model from its merged Q4_K_M GGUF.
 gymnasium>=0.29.1
 numpy>=2.0
 torch>=2.1
 stable-baselines3>=2.2.1
 sb3-contrib>=2.2.1
 cloudpickle>=3.0
+tensorboard>=2.16
+huggingface_hub>=0.23
+llama-cpp-python>=0.2.90
