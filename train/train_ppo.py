@@ -14,7 +14,9 @@ from utils.seed import set_global_seed
 from utils.tensorboard import make_run_dir
 
 
-class RewardLoggerCallback:
+class RichRewardCallback:
+    """Tracks per-episode metrics and logs them to TensorBoard."""
+
     def __init__(self) -> None:
         from stable_baselines3.common.callbacks import BaseCallback
 
@@ -22,22 +24,58 @@ class RewardLoggerCallback:
             def __init__(self):
                 super().__init__()
                 self.episode_rewards: list[float] = []
-                self.current_rewards: list[float] = []
+                self.episode_lengths: list[int] = []
+                self.episode_invalid_rates: list[float] = []
+                self.episode_cascade_counts: list[int] = []
+                self.episode_cascade_rewards: list[float] = []
+
+                self._ep_reward = 0.0
+                self._ep_steps = 0
+                self._ep_invalid = 0
+                self._ep_cascades = 0
+                self._ep_cascade_reward = 0.0
 
             def _on_step(self) -> bool:
                 rewards = self.locals.get("rewards", [])
                 dones = self.locals.get("dones", [])
-                for idx, reward in enumerate(rewards):
-                    if idx >= len(self.current_rewards):
-                        self.current_rewards.append(0.0)
-                    self.current_rewards[idx] += float(reward)
-                    if dones[idx]:
-                        self.episode_rewards.append(self.current_rewards[idx])
-                        self.logger.record(
-                            "rollout/episode_reward_custom",
-                            self.current_rewards[idx],
+                infos = self.locals.get("infos", [{}])
+
+                for idx, (reward, done, info) in enumerate(zip(rewards, dones, infos)):
+                    self._ep_reward += float(reward)
+                    self._ep_steps += 1
+                    if info.get("invalid", False):
+                        self._ep_invalid += 1
+                    if float(reward) > 0:
+                        self._ep_cascades += 1
+                        self._ep_cascade_reward += float(reward)
+
+                    if done:
+                        ep_len = self._ep_steps
+                        invalid_rate = self._ep_invalid / max(ep_len, 1)
+                        mean_cascade = (
+                            self._ep_cascade_reward / self._ep_cascades
+                            if self._ep_cascades > 0 else 0.0
                         )
-                        self.current_rewards[idx] = 0.0
+
+                        self.episode_rewards.append(self._ep_reward)
+                        self.episode_lengths.append(ep_len)
+                        self.episode_invalid_rates.append(invalid_rate)
+                        self.episode_cascade_counts.append(self._ep_cascades)
+                        self.episode_cascade_rewards.append(mean_cascade)
+
+                        ep_idx = len(self.episode_rewards)
+                        self.logger.record("rollout/episode_reward", self._ep_reward)
+                        self.logger.record("rollout/episode_length", ep_len)
+                        self.logger.record("rollout/invalid_action_rate", invalid_rate)
+                        self.logger.record("rollout/cascades_per_episode", self._ep_cascades)
+                        self.logger.record("rollout/cascade_reward_mean", mean_cascade)
+
+                        self._ep_reward = 0.0
+                        self._ep_steps = 0
+                        self._ep_invalid = 0
+                        self._ep_cascades = 0
+                        self._ep_cascade_reward = 0.0
+
                 return True
 
         self.callback = _Callback()
@@ -57,8 +95,8 @@ def train(args: argparse.Namespace) -> None:
     )
     model.set_logger(configure(str(tb_run_dir), ["stdout", "tensorboard"]))
 
-    reward_logger = RewardLoggerCallback()
-    model.learn(total_timesteps=args.timesteps, callback=reward_logger.callback)
+    cb = RichRewardCallback()
+    model.learn(total_timesteps=args.timesteps, callback=cb.callback)
 
     model_path = ROOT / args.model_path
     log_path = ROOT / args.log_path
@@ -67,10 +105,27 @@ def train(args: argparse.Namespace) -> None:
     model.save(model_path)
 
     with log_path.open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["episode", "reward"])
-        writer.writeheader()
-        for idx, reward in enumerate(reward_logger.callback.episode_rewards, start=1):
-            writer.writerow({"episode": idx, "reward": reward})
+        w = csv.DictWriter(
+            f,
+            fieldnames=["episode", "reward", "invalid_rate", "cascades", "cascade_reward_mean"],
+        )
+        w.writeheader()
+        for idx, (r, inv, cas, cmean) in enumerate(
+            zip(
+                cb.callback.episode_rewards,
+                cb.callback.episode_invalid_rates,
+                cb.callback.episode_cascade_counts,
+                cb.callback.episode_cascade_rewards,
+            ),
+            start=1,
+        ):
+            w.writerow({
+                "episode": idx,
+                "reward": r,
+                "invalid_rate": inv,
+                "cascades": cas,
+                "cascade_reward_mean": cmean,
+            })
 
     print(f"Saved PPO model to {model_path}")
     print(f"Saved training log to {log_path}")
