@@ -41,6 +41,7 @@ class CandyEnv(gym.Env):
         self.board = np.zeros((self.grid_size, self.grid_size), dtype=np.int64)
         self.moves_left = self.max_moves
         self.score = 0.0
+        self.last_action: int | None = None
 
     def reset(
         self,
@@ -51,12 +52,14 @@ class CandyEnv(gym.Env):
         super().reset(seed=seed)
         self.moves_left = self.max_moves
         self.score = 0.0
+        self.last_action = None
         self.board = self._generate_start_board()
         return self._get_obs(), self._get_info()
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         action = int(action)
         invalid = False
+        self.last_action = action
 
         if action < 0 or action >= self.num_actions or not self.is_valid_action(action):
             reward = self.invalid_penalty
@@ -75,12 +78,17 @@ class CandyEnv(gym.Env):
         info["invalid"] = invalid
         return self._get_obs(), reward, terminated, truncated, info
 
-    def render(self) -> str | None:
+    def render(self, mode: str | None = None) -> str | None:
+        render_mode = mode or self.render_mode
+        last_action = "None"
+        if self.last_action is not None and 0 <= self.last_action < self.num_actions:
+            pos_a, pos_b = self.decode_action(self.last_action)
+            last_action = f"{self.last_action}: {pos_a} <-> {pos_b}"
         text = (
-            f"Score: {self.score:.1f} | Moves left: {self.moves_left}\n"
+            f"Score: {self.score:.1f} | Moves left: {self.moves_left} | Last action: {last_action}\n"
             + "\n".join(" ".join(str(int(v)) for v in row) for row in self.board)
         )
-        if self.render_mode == "human":
+        if render_mode == "human":
             print(text)
             return None
         return text
@@ -119,10 +127,25 @@ class CandyEnv(gym.Env):
         return bool(self._find_matches(board).any())
 
     def valid_actions(self) -> list[int]:
-        return [a for a in range(self.num_actions) if self.is_valid_action(a)]
+        mask = self.get_action_mask()
+        return [int(a) for a in np.flatnonzero(mask)]
+
+    def get_action_mask(self) -> np.ndarray:
+        """Return a binary vector where 1 marks swaps that create a match."""
+        mask = self._compute_valid_action_mask()
+        if not mask.any():
+            mask[:] = 1
+        return mask
+
+    def _compute_valid_action_mask(self) -> np.ndarray:
+        mask = np.zeros(self.num_actions, dtype=np.int8)
+        for action in range(self.num_actions):
+            if self.is_valid_action(action):
+                mask[action] = 1
+        return mask
 
     def action_masks(self) -> np.ndarray:
-        return np.array([self.is_valid_action(a) for a in range(self.num_actions)], dtype=bool)
+        return self.get_action_mask().astype(bool)
 
     def simulate_action_reward(self, action: int) -> float:
         board = self.board.copy()
@@ -153,6 +176,7 @@ class CandyEnv(gym.Env):
         cloned.board = self.board.copy()
         cloned.moves_left = self.moves_left
         cloned.score = self.score
+        cloned.last_action = self.last_action
         cloned.np_random.bit_generator.state = deepcopy(self.np_random.bit_generator.state)
         return cloned
 
@@ -167,7 +191,8 @@ class CandyEnv(gym.Env):
             "score": self.score,
             "moves_left": self.moves_left,
             "valid_actions": valid,
-            "valid_action_mask": self.action_masks(),
+            "valid_action_mask": self.get_action_mask(),
+            "last_action": self.last_action,
         }
 
     def _generate_start_board(self) -> np.ndarray:
@@ -182,7 +207,7 @@ class CandyEnv(gym.Env):
                 mask = self._find_matches(board)
                 board[mask] = self.np_random.integers(0, self.candy_types, size=int(mask.sum()))
             self.board = board
-            if self.valid_actions():
+            if self._compute_valid_action_mask().any():
                 return board
         raise RuntimeError("Could not generate a playable board.")
 

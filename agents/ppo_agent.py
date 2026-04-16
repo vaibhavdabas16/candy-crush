@@ -3,7 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def make_ppo(env, gamma: float = 0.9, use_maskable: bool = True, seed: int = 0):
+def make_ppo(
+    env,
+    gamma: float = 0.9,
+    use_maskable: bool = True,
+    seed: int = 0,
+    tensorboard_log: str | None = None,
+):
     if use_maskable:
         try:
             from sb3_contrib import MaskablePPO
@@ -16,6 +22,7 @@ def make_ppo(env, gamma: float = 0.9, use_maskable: bool = True, seed: int = 0):
                 seed=seed,
                 n_steps=512,
                 batch_size=64,
+                tensorboard_log=tensorboard_log,
             )
         except ImportError:
             pass
@@ -30,6 +37,7 @@ def make_ppo(env, gamma: float = 0.9, use_maskable: bool = True, seed: int = 0):
         seed=seed,
         n_steps=512,
         batch_size=64,
+        tensorboard_log=tensorboard_log,
     )
 
 

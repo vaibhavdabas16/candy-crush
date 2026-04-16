@@ -1,0 +1,38 @@
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
+
+from env.candy_env import CandyEnv
+from gui.viewer import CandyViewer, load_policy
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--agent",
+        choices=["manual", "random", "greedy", "dqn", "ppo"],
+        default="manual",
+    )
+    parser.add_argument("--max-moves", type=int, default=20)
+    parser.add_argument("--dqn-path", type=str, default="models/dqn.pt")
+    parser.add_argument("--ppo-path", type=str, default="models/ppo")
+    parser.add_argument("--agent-delay", type=float, default=0.35)
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    env = CandyEnv(max_moves=args.max_moves)
+    policy = load_policy(args.agent, ROOT / args.dqn_path, ROOT / args.ppo_path, env)
+    viewer = CandyViewer(env, policy=policy, mode=args.agent)
+    viewer.config.agent_delay = args.agent_delay
+    viewer.run()
+
+
+if __name__ == "__main__":
+    main()
