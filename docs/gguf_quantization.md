@@ -121,6 +121,12 @@ sha256sum candy-crush-qwen35-grpo-Q4_K_M.gguf > candy-crush-qwen35-grpo-Q4_K_M.g
 
 If conversion fails with an unrecognized Qwen3.5 tokenizer pre-tokenizer hash, use a newer llama.cpp build. The local conversion used Qwen3.5 architecture support and mapped tokenizer hash `1444df51289cfa8063b96f0e62b1125440111bc79a52003ea14b6eac7016fd5f` to `qwen35`.
 
-## GUI Status
+## GUI and pipeline integration
 
-The current Pygame GUI agent loads the Hugging Face adapter through Transformers/PEFT. The GGUF path is for direct llama.cpp inference and efficient Mac/CPU testing. To use GGUF inside the GUI, add a llama.cpp-backed `llm_grpo` implementation, then pass it the same board prompt produced by the existing agent.
+The merged GGUF is the **default** path used everywhere in this repo:
+
+- **`run.sh`** (stage 6) downloads the GGUF and evaluates it via `llama-cpp-python` — see `scripts/play_grpo_demo.py`.
+- **`run_gui.py --agent llm_grpo_gguf`** drives the Pygame GUI from the same GGUF — see `agents/llm_grpo_gguf_agent.py`.
+- **`run_gui.py --no-gui --agent llm_grpo_gguf`** runs the same model in the terminal with per-step ANSI board + raw model output.
+
+The legacy Transformers/PEFT path (`--agent llm_grpo`) still exists for users who want to reload the LoRA adapter at runtime, but the GGUF is the recommended path for both Mac (Metal) and Linux CPU.

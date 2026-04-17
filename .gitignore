@@ -40,3 +40,4 @@ wandb/
 Thumbs.db
 .vscode/
 .idea/
+.claude/
