@@ -106,7 +106,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dqn-path", default="models/dqn.pt")
     p.add_argument("--ppo-path", default="models/ppo")
     p.add_argument("--log-dir", default="logs")
-    return p.parse_args()
+    # parse_known_args lets run.sh forward GRPO-only flags (--no-greedy,
+    # --gguf-*) without breaking this demo.
+    args, _unknown = p.parse_known_args()
+    return args
 
 
 def main() -> None:

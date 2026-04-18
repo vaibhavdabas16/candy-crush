@@ -122,7 +122,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--gguf-max-new-tokens", type=int, default=24)
     p.add_argument("--no-greedy", action="store_true", help="Skip the greedy comparison column.")
     p.add_argument("--log-dir", default="logs")
-    return p.parse_args()
+    # parse_known_args lets run.sh forward baseline-only flags
+    # (--agents, --dqn-path, --ppo-path) without breaking this demo.
+    args, _unknown = p.parse_known_args()
+    return args
 
 
 def main() -> None:
