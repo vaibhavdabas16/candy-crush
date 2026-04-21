@@ -356,13 +356,14 @@ CONTRIBUTIONS = [
      "rules, cascade resolver, action encoding). Authored the random and greedy baselines "
      "and the Pygame visual viewer used during development."),
     ("Arnav Mehta",
-     "Built the llama-cpp-backed GRPO inference path (LLMGRPOGGUFAgent) and wired it into "
-     "the GUI and a no-Pygame terminal mode. Wrote the fixed-board evaluation harness "
-     "(eval/evaluate.py) used for the results in this report."),
+     "Proposed and led the novel idea of training a 9B language model directly against the "
+     "game simulator with GRPO. Implemented the LoRA fine-tuning of Qwen 3.5-9B, the prompt "
+     "and reward design for textual swap commands, the Q4_K_M GGUF merge, the llama-cpp "
+     "inference agent (LLMGRPOGGUFAgent), and the fixed-board evaluation harness."),
     ("Mohil Ahuja",
-     "Led the GRPO LoRA training of the Qwen 3.5-9B model, designed the prompt template "
-     "and reward shaping for textual swap commands, and produced the merged Q4_K_M GGUF "
-     "artifact released on Hugging Face."),
+     "Built the textual board serialization, special-candy rule encoding, and prompt "
+     "template that the LLM consumes. Implemented the parser and validity-check pipeline "
+     "(parse-failure / model-invalid bookkeeping) and the no-fallback eval contract."),
     ("Vaibhav Dabas",
      "Authored the DQN and PPO training scripts, the saved-model loader, and the seven-"
      "stage run.sh pipeline that automates the entire workflow on a fresh Ubuntu 22.04 "
