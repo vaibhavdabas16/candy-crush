@@ -134,7 +134,7 @@ echo "real trained adapter / GGUF used in stage 6 is hosted on HF at"
 echo "  https://huggingface.co/arnavm7/candy-crush-qwen35-grpo-lora"
 echo
 timeout --preserve-status 3600 python -u train/train_llm_grpo_candy.py \
-  --model-name Qwen/Qwen2.5-0.5B \
+  --model-name Qwen/Qwen3.5-9B \
   --run-dir models/llm_grpo_candy \
   --output-dir models/llm_grpo_candy/run_local \
   --iterations 4 \
