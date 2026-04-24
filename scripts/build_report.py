@@ -38,10 +38,7 @@ ABSTRACT = (
     "reproduction script."
 )
 
-KEYWORDS = (
-    "reinforcement learning, GRPO, LoRA, large language models, "
-    "action masking, match-three games, PPO, DQN"
-)
+KEYWORDS = None  # keywords paragraph is deleted
 
 # (heading_level_or_para_style, text)  -- heading_level == "h1"|"h2"|"h3"|"p"|"bullet"
 SECTIONS = [
@@ -462,12 +459,13 @@ def main(template: Path, output: Path) -> None:
     abstract_replaced = False
     keywords_replaced = False
     title_replaced = False
+    keywords_para = None
     for p in doc.paragraphs:
         if not title_replaced and p.style.name == "IEEE Title" and p.text.strip():
             # Title spans two paragraphs in the template ("Learning..." +
-            # "Grid-Based Puzzles..."). Replace only the first; clear the
-            # second below.
-            p.text = "Reinforcement Learning for Stochastic Match-Three Puzzles"
+            # "Grid-Based Puzzles..."). Use the first for the project
+            # name and the second as a one-line subtitle.
+            p.text = "Candy Crusher"
             title_replaced = True
             continue
         if title_replaced and p.style.name == "IEEE Title" and p.text.strip():
@@ -482,24 +480,25 @@ def main(template: Path, output: Path) -> None:
             abstract_replaced = True
             continue
         if not keywords_replaced and p.text.strip().startswith("Keywords"):
-            p.text = "Keywords—" + KEYWORDS
+            # Drop the keywords line entirely.
+            keywords_para = p
+            p.text = ""
             keywords_replaced = True
             continue
 
     # 2) Drop everything after the keywords paragraph so we can rewrite
     #    the body cleanly.
-    body = doc.element.body
     paragraphs = list(doc.paragraphs)
-    keywords_idx = None
-    for i, p in enumerate(paragraphs):
-        if p.text.strip().startswith("Keywords"):
-            keywords_idx = i
-            break
-    if keywords_idx is None:
+    if keywords_para is None:
         raise RuntimeError("Could not locate Keywords paragraph in template.")
+    kw_el = keywords_para._element
+    keywords_idx = next(
+        i for i, p in enumerate(paragraphs) if p._element is kw_el
+    )
 
-    # Remove every paragraph after keywords_idx and every existing table.
-    for p in paragraphs[keywords_idx + 1:]:
+    # Drop the (now-empty) keywords paragraph itself plus everything
+    # after it, and remove every existing table from the body.
+    for p in paragraphs[keywords_idx:]:
         remove_paragraph(p)
     for t in list(doc.tables):
         t._element.getparent().remove(t._element)
