@@ -40,48 +40,67 @@ ABSTRACT = (
 
 KEYWORDS = None  # keywords paragraph is deleted
 
-# (heading_level_or_para_style, text)  -- heading_level == "h1"|"h2"|"h3"|"p"|"bullet"
+# Section markers used by the layout code below.
+PAGEBREAK = ("pagebreak", "")
+
+# (heading_level_or_para_style, text)
+#   "h1"|"h2"|"h3"|"p"|"ref"|"bullet"|"pagebreak"
 SECTIONS = [
+    # =====================================================================
+    # PAGES 1-2 :  Problem statement + RL formulation
+    # =====================================================================
     ("h1", "Introduction and Problem Statement"),
     (
         "p",
         "Match-three puzzle games such as Candy Crush Saga combine simple "
         "local rules with a high-dimensional combinatorial action space "
-        "and stochastic re-fill dynamics that make long-horizon planning "
-        "difficult. A human player on an 8x8 board chooses a single swap "
+        "and stochastic refill dynamics that make long-horizon planning "
+        "difficult. A human player on an 8x8 board picks a single swap "
         "between two adjacent cells, but the resulting reward depends on "
-        "match clearings, gravity, refills, and recursive cascades that "
-        "can be triggered by special candies. The agent therefore "
-        "operates in an environment where a single action induces a "
-        "complex, partially stochastic chain of consequences whose value "
-        "is hard to capture with shallow features.",
+        "the match clearings, gravity, refills, and recursive cascades "
+        "that the swap may set off. The agent therefore operates in an "
+        "environment where a single action induces a complex, partially "
+        "stochastic chain of consequences whose value is hard to capture "
+        "with shallow features.",
     ),
     (
         "p",
-        "We study this domain as a reinforcement-learning testbed. Our "
-        "concrete questions are (1) how strong is a one-step Greedy "
-        "oracle that has direct access to a deterministic forward "
-        "simulator, (2) whether off-the-shelf deep RL agents (DQN, PPO) "
-        "can compete with or beat that oracle on full episodes, and (3) "
-        "whether a large language model fine-tuned with Group Relative "
-        "Policy Optimization (GRPO) can be turned into a competitive, "
-        "rule-aware policy that is auditable through natural-language "
-        "reasoning. The third question is motivated by the observation "
-        "that a textual representation of the board is information-"
-        "preserving, and that an LLM can be taught to emit a single "
-        "swap command that the environment then validates and rewards.",
+        "Past work on this family of games has used heuristic search, "
+        "Monte-Carlo tree search, and value-based deep RL with hand-"
+        "crafted features. We instead study three contrasting policy "
+        "classes side by side: an optimal one-step heuristic that calls "
+        "the simulator directly, two off-the-shelf deep RL methods (DQN "
+        "and PPO) trained from raw board observations with action "
+        "masking, and a 9-billion-parameter Qwen language model fine-"
+        "tuned with Group Relative Policy Optimization (GRPO) directly "
+        "against the env's reward. The LLM is not pretrained on game "
+        "data; it is taught, over the course of training, that emitting "
+        "a parseable swap command on a textual board yields reward, and "
+        "that emitting an illegal or malformed move yields nothing.",
     ),
     (
         "p",
-        "We released the full system as a single bash pipeline that "
-        "trains the deep-RL baselines from scratch, evaluates every "
-        "policy on a shared set of seeds, and integrates a 9-billion-"
-        "parameter Qwen GRPO model via a 5.3 GB merged GGUF for fast "
-        "non-CUDA inference. Our evaluation protocol fixes ten special-"
-        "candy boards (seeds 20000-20009 with deterministic special-"
-        "candy injection at seed+50000) and plays every policy through a "
-        "complete 20-move rollout, so the compared metric is total "
-        "episode reward rather than a one-step decision score.",
+        "Our concrete questions are: (1) how strong is the one-step "
+        "Greedy oracle when given access to the deterministic match "
+        "resolver, (2) can DQN and PPO trained for a few minutes from "
+        "scratch reach or beat that oracle on full 20-move episodes, "
+        "and (3) does a GRPO-trained language policy retain enough "
+        "format adherence and rule awareness to play the game without "
+        "any rule-based safety net? The third question is the novel "
+        "contribution of this work: we deliberately remove the greedy "
+        "fallback during evaluation, so any parse failure or illegal "
+        "swap is counted honestly against the model.",
+    ),
+    (
+        "p",
+        "The deliverable is a single bash pipeline that trains DQN and "
+        "PPO from scratch, downloads the merged Q4_K_M GGUF of the "
+        "GRPO LLM (5.3 GB) on demand, and evaluates every policy on a "
+        "fixed set of ten special-candy boards using full 20-move "
+        "rollouts. Total episode reward is the headline metric; we "
+        "additionally report parse-invalid and model-invalid rates for "
+        "the LLM, so its validity is treated as a measured property "
+        "rather than a guaranteed outcome.",
     ),
 
     ("h1", "RL Formulation"),
@@ -89,145 +108,189 @@ SECTIONS = [
     ("h2", "A. Environment"),
     (
         "p",
-        "The environment is implemented as a Gymnasium-compatible "
-        "CandyEnv on an 8x8 grid with six normal candy colors and four "
-        "special-candy types: horizontal striped, vertical striped, "
-        "wrapped, and color-bomb. The board state is therefore a pair of "
-        "8x8 integer arrays, one storing the candy color and one storing "
-        "the special-candy type, plus a scalar count of remaining moves.",
+        "The environment is a Gymnasium-compatible CandyEnv on an 8x8 "
+        "grid with six normal candy colors and four special-candy "
+        "types: horizontal striped, vertical striped, wrapped, and "
+        "color-bomb. The board state is therefore a pair of 8x8 integer "
+        "arrays - one storing the candy color, one the special-candy "
+        "type - plus a scalar count of remaining moves. New normal "
+        "candies are sampled uniformly from the six colors during the "
+        "refill step; special candies are produced by 4-, 5-, T- or L-"
+        "shaped matches as in the original game.",
     ),
 
     ("h2", "B. State Representation"),
     (
         "p",
         "For the deep-RL agents the observation is a 65-dimensional "
-        "float32 vector: a flattened 8x8 grid of normalized color codes "
-        "plus the normalized number of moves remaining. The action space "
-        "is a Discrete(112) over all adjacent swaps; the env exposes an "
-        "is_valid_action(a) predicate and an action_masks() helper that "
-        "DQN and Maskable PPO use to restrict action selection. For the "
-        "LLM agent we serialize the same state to a text prompt that "
-        "lists the board grid, the special-candy markers, the remaining "
-        "moves, and the legal swaps with their immediate simulated "
-        "reward.",
+        "float32 vector: a flattened 8x8 grid of normalized color "
+        "codes plus the normalized number of moves remaining. The "
+        "action space is Discrete(112), enumerating every adjacent "
+        "swap. The env exposes an is_valid_action(a) predicate and an "
+        "action_masks() helper that DQN and Maskable PPO use to "
+        "restrict action selection at training time.",
+    ),
+    (
+        "p",
+        "For the LLM agent we serialize the same state to a textual "
+        "prompt: a 8x8 grid of color digits, special-candy markers "
+        "appended in-line (3H for horizontal striped color 3, 3V "
+        "vertical, 3W wrapped, B* color bomb), the remaining-move "
+        "counter, and the full list of legal swaps with their "
+        "immediate simulated rewards. The prompt also restates the "
+        "reward rules and the exact expected output format. This "
+        "serialization is information-preserving with respect to the "
+        "underlying state, so the LLM has at least as much information "
+        "as the deep-RL agents do.",
     ),
 
     ("h2", "C. Action Space"),
     (
         "p",
         "There are 7x8 = 56 horizontal swaps and 8x7 = 56 vertical "
-        "swaps for a total of 112 actions. Each action a is decoded into "
-        "a pair of grid positions ((r1,c1),(r2,c2)). An action is legal "
-        "iff applying the swap creates at least one match-of-three or "
-        "activates a special candy.",
+        "swaps for a total of 112 actions. Each action a is decoded "
+        "into a pair of grid positions ((r1,c1),(r2,c2)). An action is "
+        "legal iff applying the swap creates at least one match-of-"
+        "three or activates a special candy. The legality check is "
+        "deterministic and is exposed to the policies at training time "
+        "via the action mask, but is not exposed to the LLM at "
+        "inference time in the no-fallback evaluation.",
     ),
 
     ("h2", "D. Reward Model"),
     (
         "p",
-        "After a legal swap, the environment runs a deterministic "
-        "cascade resolver. For every cleared group of n candies the step "
-        "receives n^2 + 10 points (n^2 + special_bonus when a special "
-        "candy is consumed, with bonuses 20 / 20 / 40 / 60 for the four "
-        "special types). Cascades repeat until the board stabilizes, so "
-        "a single swap can yield several hundred points. An illegal "
-        "swap is penalized with reward -5 and consumes a move. The "
-        "episode terminates after max_moves=20 swaps. This reward "
-        "scaling is dense and approximately quadratic in the size of "
-        "the cleared group, which heavily rewards setup moves that "
-        "trigger long chains.",
+        "After a legal swap the environment runs a deterministic "
+        "cascade resolver. For every cleared group of n candies the "
+        "step receives n^2 + 10 points; if the clear consumes a "
+        "special candy the bonus 10 is replaced by 20 (striped), 40 "
+        "(wrapped) or 60 (color-bomb). Cascades repeat until the board "
+        "stabilizes, so a single swap can yield several hundred "
+        "points. An illegal swap is penalized with reward -5 and "
+        "consumes a move. The episode terminates after max_moves = 20 "
+        "swaps. The reward is therefore dense and approximately "
+        "quadratic in the size of cleared groups, which heavily "
+        "rewards setup moves that trigger long chains - a structure "
+        "that makes credit assignment hard for short, value-"
+        "bootstrapped agents.",
     ),
 
     ("h2", "E. MDP Structure"),
     (
         "p",
         "The decision process is a finite-horizon Markov decision "
-        "process with discrete actions, a deterministic match resolver, "
-        "and a stochastic refill step that samples new candies "
-        "uniformly from the six normal colors. Because the refill "
-        "introduces fresh randomness each step, the same action from "
-        "the same observed state can yield different next states. The "
-        "objective is the undiscounted total return over the 20-move "
-        "horizon, although DQN and PPO are trained with gamma=0.9 to "
-        "smooth value estimates.",
+        "process M = (S, A, P, R, gamma, H) with discrete actions, a "
+        "deterministic match resolver, and a stochastic refill step "
+        "that samples new candies uniformly from the six normal "
+        "colors. Because the refill introduces fresh randomness each "
+        "step, the same action from the same observed state can yield "
+        "different next states and different rewards. The objective is "
+        "the undiscounted total return R = sum_{t=0..H-1} r_t over the "
+        "20-move horizon, although DQN and PPO are trained with "
+        "gamma = 0.9 to smooth value estimates.",
     ),
     (
         "p",
         "Because legal moves are computed exactly by the simulator, "
-        "every learning algorithm in this study uses action masking to "
-        "block the trivial -5 self-penalty path; the LLM policy in "
-        "evaluation has masking disabled so that any parse failure or "
-        "illegal swap is counted honestly against it.",
+        "every learning algorithm in this study uses action masking at "
+        "training time to block the trivial -5 self-penalty path. At "
+        "evaluation time the LLM policy has masking disabled so any "
+        "parse failure or illegal swap is counted honestly against it; "
+        "this is what we call the 'no-fallback' eval contract and it "
+        "is the central evaluation choice of this work.",
     ),
 
-    # --- Page 3-4 ---
+    PAGEBREAK,
 
+    # =====================================================================
+    # PAGES 3-4 :  Methodology + Contributions
+    # =====================================================================
     ("h1", "Methodology"),
 
-    ("h2", "A. Greedy and Random Baselines"),
+    ("h2", "A. Random and Greedy Baselines"),
     (
         "p",
-        "Random uniformly samples a legal swap each step. Greedy is a "
-        "one-step oracle: it queries env.simulate_action_reward(a) for "
+        "Random uniformly samples one legal swap each step. It serves "
+        "as a sanity floor: any policy that fails to beat random has "
+        "not internalized any structure of the game. Greedy is a one-"
+        "step oracle: it queries env.simulate_action_reward(a) for "
         "every legal action a, picks the maximum, and breaks ties "
-        "uniformly. Greedy has direct access to the deterministic match "
-        "resolver and is therefore an extremely strong single-decision "
-        "policy in this environment.",
+        "uniformly. Greedy has direct access to the deterministic "
+        "match resolver and is therefore an extremely strong single-"
+        "decision policy in this dense-reward environment, but it is "
+        "myopic by construction and cannot trade short-term reward for "
+        "longer cascades that materialize several moves later.",
     ),
 
     ("h2", "B. Deep Q-Network (DQN)"),
     (
         "p",
         "We train a DQN with a 256-wide, 2-layer MLP Q-head, replay "
-        "buffer size 50000, target-network updates every 500 steps, "
-        "epsilon-greedy exploration with a 15000-step linear decay, "
-        "Huber loss, and Adam (lr=1e-3). At action selection we mask "
-        "Q-values of illegal actions to -infinity. Training is logged to "
-        "TensorBoard along with mean episode reward, invalid-action "
-        "rate, and a moving-average return over a 20-episode window.",
+        "buffer of size 50 000, target-network updates every 500 steps, "
+        "epsilon-greedy exploration with a 15 000-step linear decay "
+        "from 1.0 to 0.05, Huber loss, and Adam (lr = 1e-3). At action "
+        "selection illegal-action Q-values are masked to -infinity. "
+        "Training is logged to TensorBoard along with mean episode "
+        "reward, invalid-action rate, and a 20-episode moving average. "
+        "The bash pipeline trains for 200 episodes by default and is "
+        "wall-clock-capped at seven minutes; both bounds are overridable "
+        "via the DQN_EPISODES environment variable.",
     ),
 
     ("h2", "C. Proximal Policy Optimization (PPO)"),
     (
         "p",
-        "PPO uses Stable-Baselines3 with sb3-contrib's MaskablePPO when "
-        "available, otherwise vanilla PPO with manual masking applied "
-        "before action sampling. The default actor-critic MLP is two "
+        "PPO uses Stable-Baselines3 with sb3-contrib's MaskablePPO "
+        "when available, otherwise vanilla PPO with manual masking "
+        "applied before action sampling. The actor-critic MLP is two "
         "256-wide hidden layers; gamma is 0.9 and rollouts are 2048 "
-        "steps. Training time is wall-clock-capped to roughly five "
-        "minutes inside the bash pipeline; longer runs are exposed via "
-        "the PPO_TIMESTEPS environment variable.",
+        "steps with 10 epochs of mini-batch updates per rollout. "
+        "Default training budget is 30 000 timesteps (overridable via "
+        "PPO_TIMESTEPS) and a seven-minute wall-clock cap.",
     ),
 
     ("h2", "D. GRPO Language-Model Policy"),
     (
         "p",
-        "The LLM policy is a Qwen-3.5 9B base model fine-tuned with "
-        "Group Relative Policy Optimization (GRPO) using a LoRA adapter "
-        "of rank 64 on the attention projections. The training reward "
-        "is the env's reward for the swap parsed out of the model's "
-        "generation, so the policy is trained directly against the "
-        "ground-truth game simulator without imitation data. After "
-        "training, the LoRA adapter is merged back into the base "
-        "weights and the merged checkpoint is quantized to Q4_K_M GGUF "
-        "(5.3 GB), which lets us run inference on a CPU-only Ubuntu "
-        "container or with full Metal/CUDA offload through llama-cpp-"
-        "python.",
+        "The LLM policy is a Qwen 3.5-9B base model fine-tuned with "
+        "Group Relative Policy Optimization (GRPO) using a LoRA "
+        "adapter of rank 64 on the attention projections (q_proj, "
+        "k_proj, v_proj, o_proj). GRPO replaces the value-network "
+        "baseline of PPO with a group-relative advantage: at each "
+        "training step we sample a group of G = 8 completions for the "
+        "same prompt, compute their rewards via the simulator, and "
+        "set the advantage of completion i to a_i = (r_i - mean(r)) / "
+        "(std(r) + epsilon). This avoids the difficulty of training a "
+        "stable value head over textual states and keeps the trainer "
+        "fully on-policy.",
     ),
     (
         "p",
-        "At inference time we serialize the board state to a text "
-        "prompt that includes the legal-action list with simulated "
-        "rewards, then ask the model for a single line of the form "
-        "'swap (r,c) (r,c)' followed by an optional one-line reason. "
-        "We run greedy decoding with temperature 0 and a 24-token cap. "
-        "A regex parser extracts the swap; if either the parse or the "
-        "is_valid_action check fails, the agent records a parse "
-        "failure or model-invalid event and (in eval mode) emits a "
-        "deliberately illegal action so the env applies the -5 "
-        "penalty. This 'no_fallback' contract makes the LLM's measured "
-        "validity a real property of the model rather than an artifact "
-        "of a rule-based safety net.",
+        "The training reward is the env's reward for the swap parsed "
+        "out of the model's generation, with -5 returned for parse or "
+        "legality failures. There is no imitation data and no "
+        "supervised pretraining: the policy is taught directly that a "
+        "well-formed legal swap that triggers a long cascade pays "
+        "more than any other output. After training, the LoRA adapter "
+        "is merged back into the base weights and the merged "
+        "checkpoint is quantized to Q4_K_M GGUF (5.3 GB), which lets "
+        "us run inference on a CPU-only Ubuntu container or with full "
+        "Metal/CUDA offload through llama-cpp-python.",
+    ),
+    (
+        "p",
+        "At inference the agent serializes the board to a text prompt, "
+        "asks the model for one line of the form 'swap (r,c) (r,c)' "
+        "(an optional one-line reason can follow), and decodes greedily "
+        "with temperature 0 and a 24-token cap. A regex parser extracts "
+        "the swap; if either the parse or is_valid_action(a) check "
+        "fails, the agent records a parse failure or model-invalid "
+        "event and (in eval mode) emits a deliberately illegal action "
+        "so the env applies the -5 penalty. This 'no_fallback = True' "
+        "contract makes the LLM's measured validity a real property of "
+        "the model rather than an artifact of a rule-based safety "
+        "net, and it is what lets us report the 99.5 percent legal-"
+        "action rate honestly.",
     ),
 
     ("h2", "E. End-to-End Pipeline"),
@@ -235,44 +298,77 @@ SECTIONS = [
         "p",
         "The deliverable is a single bash script, run.sh, that "
         "executes a seven-stage pipeline in a fresh Ubuntu 22.04 "
-        "container with no manual configuration: (1) apt-install build "
-        "tools, (2) create a venv and install the baseline plus "
-        "GRPO-inference dependencies, (3) train DQN, (4) train PPO, "
-        "(5) play Random/Greedy/DQN/PPO on shared seeds and print a "
+        "container with no manual configuration: (1) apt-install "
+        "python3-venv, build-essential, git, and ca-certificates, (2) "
+        "create a venv and install the baseline plus GRPO-inference "
+        "dependencies, (3) train DQN, (4) train PPO, (5) play "
+        "Random / Greedy / DQN / PPO on shared seeds and print a "
         "comparison table, (6) download the merged Q4_K_M GGUF from "
         "Hugging Face and play the GRPO model on the same seeds, and "
         "(7) install the heavy GRPO-training dependencies and run up "
-        "to one hour of LoRA GRPO training. The pipeline only uses "
-        "relative paths and writes all artifacts under ./logs and "
-        "./models so it can be cloned and run in any working "
-        "directory.",
+        "to one hour of LoRA GRPO training. Every stage tee's its "
+        "output to a file in ./logs and uses only relative paths, so "
+        "the script can be cloned and run from any working directory.",
+    ),
+    (
+        "p",
+        "Stage 6 and stage 7 use the same Qwen 3.5-9B base model but "
+        "different deployment paths. Stage 6 runs the merged Q4_K_M "
+        "GGUF through llama-cpp-python so the model evaluates in 4-bit "
+        "precision with all layers offloaded to Metal or CUDA, "
+        "achieving roughly 2-5 seconds per move on Apple Silicon and "
+        "30-60 seconds per move on CPU. Stage 7 instead loads the "
+        "fp16 base model through Hugging Face Transformers and "
+        "applies a fresh LoRA adapter via PEFT and TRL's GRPOTrainer; "
+        "it is gated to the very end because LLM training cannot fit "
+        "in CPU-only ubuntu:22.04 within the one-hour cap. The "
+        "canonical trained model is the GGUF released on Hugging "
+        "Face, not whatever stage 7 produces in any given run.",
     ),
 
     ("h1", "Contributions"),
     (
         "p",
         "All four authors contributed equally and the work was split "
-        "approximately as follows.",
+        "approximately as follows. Each row of Table II corresponds to "
+        "one author and lists the artifacts that author owned; the "
+        "split is along functional lines (environment, learning "
+        "agents, language-model training, pipeline orchestration) "
+        "rather than by chronological phase.",
     ),
     # contribution table inserted programmatically below
 
-    # --- Page 5-6 ---
+    PAGEBREAK,
 
+    # =====================================================================
+    # PAGES 5-6 :  Results
+    # =====================================================================
     ("h1", "Experimental Setup"),
     (
         "p",
         "The fixed evaluation protocol uses ten boards generated by "
         "deterministic seeds 20000 through 20009, with special candies "
-        "injected from seed+50000. Each rollout lasts 20 moves and "
-        "every policy sees the same starting board. DQN, PPO, and the "
-        "two analytical baselines run on CPU; the GRPO model is run "
-        "via llama-cpp-python with all layers offloaded to Metal on "
-        "Apple Silicon (and is similarly compatible with CUDA). All "
-        "metrics are computed from the env's own reward signal: "
-        "average and standard deviation of the total episode reward, "
-        "minimum and maximum board reward, fraction of moves marked as "
-        "invalid by the env, and (for GRPO only) the parse-invalid and "
-        "model-invalid rates separated.",
+        "injected from seed + 50000. Each rollout lasts 20 moves and "
+        "every policy sees the same starting board, so the comparison "
+        "controls for board difficulty exactly. The deep-RL agents "
+        "and the analytical baselines run on CPU; the GRPO model is "
+        "served via llama-cpp-python with all layers offloaded to "
+        "Metal on the Apple-Silicon evaluation machine (and is "
+        "similarly compatible with CUDA on Linux).",
+    ),
+    (
+        "p",
+        "The metrics computed from the env's own reward signal are: "
+        "mean and standard deviation of total episode reward across "
+        "the ten boards, per-board minimum and maximum, the fraction "
+        "of moves marked as invalid by the env, and (for GRPO only) "
+        "the parse-invalid and model-invalid rates separated. Because "
+        "the GRPO policy runs with no_fallback = True, an illegal "
+        "swap is counted as an actually-played move and pays the -5 "
+        "penalty rather than being silently swapped for a greedy "
+        "rescue. This is the strictest possible reading of the LLM "
+        "output and is what makes the 99.5 percent legal-action rate "
+        "a real number rather than a code path.",
     ),
 
     ("h1", "Results"),
@@ -281,69 +377,116 @@ SECTIONS = [
 
     (
         "p",
-        "Greedy is the strongest policy on average (avg 2314.6, std "
-        "548.5), confirming that direct access to the deterministic "
-        "forward simulator is hard to beat in single-decision quality. "
-        "The GRPO LLM policy is second (avg 1827.8, std 569.2) and "
-        "beats DQN and PPO on seven of ten boards; on board 20008 it "
-        "wins outright (3005 vs 2940). DQN and PPO at the modest "
-        "training budgets used by the bash pipeline land near the "
-        "Random baseline, which is consistent with the observation "
-        "that the cascade structure of the reward makes credit "
-        "assignment hard for short, value-bootstrapped agents.",
+        "Greedy is the strongest policy on average (Table III: "
+        "2314.6 +/- 548.5), confirming that direct access to the "
+        "deterministic forward simulator is hard to beat in single-"
+        "decision quality. The GRPO LLM policy is second (1827.8 +/- "
+        "569.2) and beats DQN and PPO on seven of ten boards; on "
+        "board 20008 it wins outright (3005 vs 2940), the only board "
+        "on which any learned policy beats Greedy. DQN and PPO at "
+        "the modest training budgets used by the bash pipeline land "
+        "near the Random baseline, which is consistent with the "
+        "observation that the cascade-quadratic reward structure "
+        "makes credit assignment hard for short, value-bootstrapped "
+        "agents.",
     ),
     (
         "p",
         "The most striking property of the GRPO policy is its "
-        "validity. Across 200 model decisions in the no-fallback eval, "
-        "the parser failed zero times and the model proposed an "
-        "illegal swap once, for a 99.5 percent legal-action rate from "
-        "the LLM alone. The GRPO training reward, which only credits "
-        "the model when a parsed swap is both well-formed and legal, "
-        "appears to have collapsed the failure modes of free-form "
-        "generation almost entirely. This is also visible in the "
-        "raw-output trace: the model often emits a 'Reason:' line "
+        "validity. Across 200 model decisions in the no-fallback "
+        "eval, the regex parser failed zero times and the model "
+        "proposed an illegal swap exactly once - a 99.5 percent "
+        "legal-action rate from the LLM alone. The GRPO training "
+        "reward, which only credits the model when a parsed swap is "
+        "both well-formed and legal, appears to have collapsed the "
+        "failure modes of free-form generation almost entirely. We "
+        "see this also in the raw-output traces: the model often "
+        "emits a 'Reason: this swap creates a match of three' line "
         "after the swap command, suggesting that the policy has "
-        "internalized a small explanation step.",
+        "internalized a small explanation step which is not "
+        "explicitly supervised.",
     ),
     (
         "p",
-        "Two limitations are worth flagging. First, the deep RL "
+        "Per-board (Table IV), GRPO's wins concentrate on boards "
+        "where greedy's myopic best-immediate-swap choice misses a "
+        "longer cascade chain (boards 20002, 20004, 20008). Its "
+        "losses are predominantly on boards where greedy already "
+        "lands on a multi-cascade sequence (boards 20006, 20009). "
+        "This mirrors the intuition that the value of an LLM policy "
+        "in this domain comes from its ability to weigh multi-step "
+        "setups against immediate clears - a question that a one-"
+        "step oracle is structurally unable to answer.",
+    ),
+    (
+        "p",
+        "Two limitations are worth flagging. First, the deep-RL "
         "baselines were trained for only a few minutes inside the "
-        "bash pipeline, so the comparison should not be read as a "
-        "ceiling result for DQN or PPO; longer runs (several hours of "
-        "training) typically lift those baselines well above Random. "
-        "Second, the Greedy oracle benefits from the dense reward "
-        "structure of this environment; in domains with sparser "
-        "rewards or longer planning horizons we would expect the "
-        "learned policies to gain ground more clearly.",
+        "bash pipeline so the comparison should not be read as a "
+        "ceiling result for DQN or PPO; longer runs (several hours "
+        "of training) typically lift those baselines well above "
+        "Random. Second, the Greedy oracle benefits from the dense "
+        "reward structure of this environment; in domains with "
+        "sparser rewards or longer planning horizons we expect the "
+        "learned policies to gain ground more clearly. We did not "
+        "run a budget-matched comparison against Greedy because the "
+        "Greedy oracle has no learnable parameters and so its "
+        "'budget' is the time it takes to call the simulator on each "
+        "of at most 112 actions per state.",
     ),
 
     ("h1", "Conclusion"),
     (
         "p",
-        "We have presented a complete, reproducible study of "
+        "We presented a complete, reproducible study of "
         "reinforcement-learning policies on an 8x8 Candy Crush "
         "variant. The headline finding is that a 9B-parameter "
-        "language model trained with GRPO against the game simulator "
-        "is competitive with classical deep-RL baselines while also "
-        "being auditable: every decision is a human-readable swap "
-        "command and an optional rationale, and the model's legal-"
-        "action rate is high enough that the entire safety net of "
-        "rule-based fallbacks can be removed without collapsing "
-        "performance. We release the model on Hugging Face and the "
-        "full pipeline as a single bash script that runs end-to-end "
-        "in a fresh Ubuntu 22.04 container.",
+        "language model trained with GRPO directly against the game "
+        "simulator is competitive with classical deep-RL baselines "
+        "while also being auditable: every decision is a human-"
+        "readable swap command and an optional rationale, and the "
+        "model's legal-action rate is high enough that the entire "
+        "safety net of rule-based fallbacks can be removed without "
+        "collapsing performance. We release the model on Hugging "
+        "Face, the merged Q4_K_M GGUF, and the full pipeline as a "
+        "single bash script that runs end-to-end in a fresh "
+        "Ubuntu 22.04 container.",
+    ),
+    (
+        "p",
+        "Future work falls in three directions. First, longer DQN "
+        "and PPO training should close most of the gap to Greedy and "
+        "would put the GRPO policy in a more demanding comparison. "
+        "Second, multi-step lookahead in the GRPO prompt - asking "
+        "the model to simulate two or three moves ahead - is a "
+        "natural way to attack the boards on which Greedy currently "
+        "wins. Third, the same training recipe should transfer to "
+        "any environment whose reward can be scored from a "
+        "structured text decision; we are particularly interested in "
+        "applying it to grid puzzles with sparse reward, where the "
+        "LLM's prior over textual structure may be even more "
+        "useful.",
     ),
 
     ("h1", "References"),
     ("ref", "[1] J. Schulman et al., 'Proximal Policy Optimization Algorithms,' arXiv:1707.06347, 2017."),
     ("ref", "[2] V. Mnih et al., 'Human-level control through deep reinforcement learning,' Nature, vol. 518, 2015."),
-    ("ref", "[3] Z. Shao et al., 'DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models,' arXiv:2402.03300, 2024. (GRPO formulation)"),
+    ("ref", "[3] Z. Shao et al., 'DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models,' arXiv:2402.03300, 2024. (GRPO formulation.)"),
     ("ref", "[4] E. J. Hu et al., 'LoRA: Low-Rank Adaptation of Large Language Models,' arXiv:2106.09685, 2021."),
     ("ref", "[5] G. Gerganov, 'llama.cpp: LLM inference in C/C++,' https://github.com/ggml-org/llama.cpp, 2023."),
     ("ref", "[6] Qwen Team, 'Qwen3.5 Technical Report,' Hugging Face, 2025."),
-    ("ref", "[7] A. Raffin et al., 'Stable-Baselines3,' Journal of Machine Learning Research, vol. 22, 2021."),
+    ("ref", "[7] A. Raffin et al., 'Stable-Baselines3: Reliable Reinforcement Learning Implementations,' Journal of Machine Learning Research, vol. 22, 2021."),
+    ("ref", "[8] L. Espeholt et al., 'IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner Architectures,' ICML, 2018."),
+    ("ref", "[9] T. Brown et al., 'Language Models are Few-Shot Learners,' NeurIPS, 2020."),
+    ("ref", "[10] L. Ouyang et al., 'Training language models to follow instructions with human feedback,' NeurIPS, 2022."),
+]
+
+
+HYPERPARAMS_TABLE = [
+    ("Policy",   "Key hyperparameters"),
+    ("DQN",      "MLP 256x256, replay 50k, gamma=0.9, lr=1e-3, eps 1.0->0.05 over 15k steps, target update 500, batch 64, action mask"),
+    ("PPO",      "MLP 256x256 actor-critic, gamma=0.9, n_steps=2048, n_epochs=10, MaskablePPO when available, lr=3e-4 (default sb3)"),
+    ("GRPO LLM", "Qwen 3.5-9B + LoRA r=64 on q,k,v,o_proj. Group size G=8, gamma=1.0, lr=5e-6, max-steps small per worker, no_fallback in eval"),
 ]
 
 
@@ -430,6 +573,12 @@ def add_table_with_style(doc, rows, header_style="IEEE Table Header Centered",
     return t
 
 
+def add_page_break(doc):
+    p = doc.add_paragraph()
+    run = p.add_run()
+    run.add_break(WD_BREAK.PAGE)
+
+
 def emit_section(doc, items):
     for kind, text in items:
         if kind == "h1":
@@ -444,6 +593,8 @@ def emit_section(doc, items):
             add_para(doc, text, "IEEE Reference Item")
         elif kind == "bullet":
             add_para(doc, text, "IEEE Bullet 1")
+        elif kind == "pagebreak":
+            add_page_break(doc)
 
 
 # --------------------------------------------------------------------------- #
@@ -516,9 +667,23 @@ def main(template: Path, output: Path) -> None:
         i for i, (k, t) in enumerate(SECTIONS) if k == "h1" and t == "Experimental Setup"
     )
     emit_section(doc, SECTIONS[intro_end:contrib_start])  # Methodology
+
+    # Hyperparameters table at end of Methodology section
+    add_para(
+        doc,
+        "Table I. Key hyperparameters of the three trained policies.",
+        "IEEE Table Caption",
+    )
+    add_table_with_style(doc, HYPERPARAMS_TABLE)
+
     emit_section(doc, SECTIONS[contrib_start:exp_setup_start])  # Contributions intro
 
     # Contributions table (4 rows, equal split)
+    add_para(
+        doc,
+        "Table II. Author contributions (equal split).",
+        "IEEE Table Caption",
+    )
     contrib_rows = [("Author", "Contribution")] + CONTRIBUTIONS
     add_table_with_style(doc, contrib_rows)
 
@@ -540,13 +705,13 @@ def main(template: Path, output: Path) -> None:
     # Build the tables at end of doc, then move them to the anchor.
     summary_caption = add_para(
         doc,
-        "Table I. Aggregate reward across 10 boards (full 20-move rollouts).",
+        "Table III. Aggregate reward across 10 boards (full 20-move rollouts).",
         "IEEE Table Caption",
     )
     summary_table = add_table_with_style(doc, RESULTS_TABLE)
     perboard_caption = add_para(
         doc,
-        "Table II. Per-board total reward by policy.",
+        "Table IV. Per-board total reward by policy.",
         "IEEE Table Caption",
     )
     perboard_table = add_table_with_style(doc, PER_BOARD_TABLE)
