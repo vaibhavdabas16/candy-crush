@@ -133,6 +133,15 @@ class LLMGRPOGGUFAgent:
 
         self._step += 1
         prompt = _prompt_for_env(env)
+
+        if self.log_io and self.log_prompt:
+            print(
+                f"\n========== grpo-gguf step={self._step} prompt ==========\n"
+                f"{prompt}"
+                f"========================================================",
+                flush=True,
+            )
+
         t0 = time.time()
         text = self.generate(prompt, deterministic=deterministic)
         gen_s = time.time() - t0
@@ -179,8 +188,6 @@ class LLMGRPOGGUFAgent:
                 f"chosen={chosen} {decoded} [{tag}]",
                 flush=True,
             )
-            if self.log_prompt:
-                print(f"[grpo-gguf step={self._step} prompt]\n{prompt}", flush=True)
 
         return int(chosen), None
 
