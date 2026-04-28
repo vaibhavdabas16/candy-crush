@@ -1,5 +1,11 @@
 # Candy Crush RL
 
+## Project Demo Video
+
+<video src="./Video%20Project%201.mp4" controls width="100%"></video>
+
+[Watch the project demo video](./Video%20Project%201.mp4)
+
 Reinforcement-learning agents for an 8×8 Candy Crush–style environment, with classical RL baselines (Random, Greedy, **DQN**, **PPO**) and a 9-billion-parameter **LLM policy** fine-tuned with GRPO and served as a 5.3 GB Q4_K_M GGUF for fast CPU/Metal inference.
 
 > **One command, fresh `ubuntu:22.04`, full pipeline:** `bash run.sh`
