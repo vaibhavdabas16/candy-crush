@@ -36,18 +36,52 @@ class ReplayBuffer:
 
 
 class QNetwork(nn.Module):
+    """2D-CNN Q-network.
+
+    The flat 65-dim observation is reshaped internally into a (6, 8, 8)
+    one-hot spatial tensor so conv filters can detect match-3 patterns
+    (e.g. a 3×1 filter naturally learns "three of the same in a row").
+    The scalar moves_left feature is appended after flattening.
+
+    Architecture:
+        (6,8,8) one-hot  →  Conv(32) → Conv(64) → Conv(64)
+                         →  Flatten  →  cat(moves_left)
+                         →  Linear(256) → Linear(action_dim)
+    """
+
+    GRID: int = 8
+    CANDY_TYPES: int = 6
+
     def __init__(self, obs_dim: int, action_dim: int) -> None:
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(obs_dim, 256),
+        self.conv = nn.Sequential(
+            nn.Conv2d(self.CANDY_TYPES, 32, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.Linear(256, 256),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+        )
+        conv_flat = 64 * self.GRID * self.GRID  # 4096
+        self.head = nn.Sequential(
+            nn.Linear(conv_flat + 1, 256),  # +1 for moves_left scalar
             nn.ReLU(),
             nn.Linear(256, action_dim),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x)
+        batch = x.shape[0]
+        board_norm = x[:, :64]          # (B, 64) values in [0, 1]
+        moves_left = x[:, 64:65]        # (B, 1)
+
+        # Recover candy indices 0-5 and one-hot encode into spatial (6,8,8)
+        board_idx = (board_norm * (self.CANDY_TYPES - 1)).round().long().clamp(0, self.CANDY_TYPES - 1)
+        board_2d = board_idx.view(batch, self.GRID, self.GRID)
+        one_hot = torch.zeros(batch, self.CANDY_TYPES, self.GRID, self.GRID, device=x.device)
+        one_hot.scatter_(1, board_2d.unsqueeze(1), 1.0)
+
+        feat = self.conv(one_hot).flatten(1)           # (B, 4096)
+        return self.head(torch.cat([feat, moves_left], dim=1))
 
 
 @dataclass
@@ -135,11 +169,13 @@ class DQNAgent:
 
         q_values = self.q_net(obs_t).gather(1, actions_t).squeeze(1)
         with torch.no_grad():
-            next_q = self.target_net(next_obs_t)
-            next_q = next_q.masked_fill(~next_masks_t, -1e9)
-            max_next_q = next_q.max(dim=1).values
-            max_next_q = torch.where(max_next_q < -1e8, torch.zeros_like(max_next_q), max_next_q)
-            target = rewards_t + self.config.gamma * (1.0 - dones_t) * max_next_q
+            online_next_q = self.q_net(next_obs_t)
+            online_next_q = online_next_q.masked_fill(~next_masks_t, -1e9)
+            next_actions = online_next_q.argmax(dim=1, keepdim=True)
+            target_next_q = self.target_net(next_obs_t).gather(1, next_actions).squeeze(1)
+            all_invalid = (~next_masks_t).all(dim=1)
+            target_next_q = torch.where(all_invalid, torch.zeros_like(target_next_q), target_next_q)
+            target = rewards_t + self.config.gamma * (1.0 - dones_t) * target_next_q
 
         loss = nn.functional.smooth_l1_loss(q_values, target)
         self.optimizer.zero_grad()
