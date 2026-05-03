@@ -484,7 +484,12 @@ def load_policy(
         return GRPOAgent.load(path)
     if agent_name == "llm_grpo":
         path = Path(llm_grpo_path)
-        if not path.exists():
+        is_hf_repo_id = (
+            isinstance(llm_grpo_path, str)
+            and llm_grpo_path.count("/") == 1
+            and not llm_grpo_path.startswith(".")
+        )
+        if not is_hf_repo_id and not path.exists():
             raise FileNotFoundError(f"LLM GRPO adapter not found: {path}")
-        return LLMGRPOAgent(path, model_name=llm_model_name)
+        return LLMGRPOAgent(llm_grpo_path if is_hf_repo_id else path, model_name=llm_model_name)
     raise ValueError(f"Unknown agent: {agent_name}")
