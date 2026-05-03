@@ -9,6 +9,7 @@ import numpy as np
 from agents.baselines import GreedyPolicy, RandomPolicy
 from agents.dqn_agent import DQNAgent
 from agents.grpo_agent import GRPOAgent
+from agents.llm_grpo_agent import LLMGRPOAgent
 from agents.ppo_agent import load_ppo
 from env.candy_env import CandyEnv
 
@@ -143,7 +144,7 @@ class CandyViewer:
         self._animate_and_step(action)
 
     def _agent_action(self) -> int:
-        if isinstance(self.policy, (RandomPolicy, GreedyPolicy, DQNAgent, GRPOAgent)):
+        if isinstance(self.policy, (RandomPolicy, GreedyPolicy, DQNAgent, GRPOAgent, LLMGRPOAgent)):
             action, _ = self.policy.predict(self.obs, env=self.env, deterministic=True)
             return int(action)
 
@@ -450,7 +451,15 @@ class CandyViewer:
         return None
 
 
-def load_policy(agent_name: str, dqn_path: str | Path, ppo_path: str | Path, env: CandyEnv, grpo_path: str | Path = "models/grpo_candy.pt"):
+def load_policy(
+    agent_name: str,
+    dqn_path: str | Path,
+    ppo_path: str | Path,
+    env: CandyEnv,
+    grpo_path: str | Path = "models/grpo_candy.pt",
+    llm_grpo_path: str | Path = "models/llm_grpo_candy/qwen35_9b/final_plus30",
+    llm_model_name: str = "Qwen/Qwen3.5-9B",
+):
     agent_name = agent_name.lower()
     if agent_name == "manual":
         return None
@@ -473,4 +482,9 @@ def load_policy(agent_name: str, dqn_path: str | Path, ppo_path: str | Path, env
         if not path.exists():
             raise FileNotFoundError(f"GRPO model not found: {path}")
         return GRPOAgent.load(path)
+    if agent_name == "llm_grpo":
+        path = Path(llm_grpo_path)
+        if not path.exists():
+            raise FileNotFoundError(f"LLM GRPO adapter not found: {path}")
+        return LLMGRPOAgent(path, model_name=llm_model_name)
     raise ValueError(f"Unknown agent: {agent_name}")
