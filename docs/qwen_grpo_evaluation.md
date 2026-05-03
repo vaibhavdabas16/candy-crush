@@ -24,6 +24,31 @@ or from a local adapter directory downloaded with `huggingface_hub.snapshot_down
 
 The final comparison was run on a fixed set of 10 special-candy boards. Each policy receives the same board state and is scored on the immediate reward of one selected swap. Higher is better.
 
+This is not a full-episode score. It answers a narrower question: "given this exact board, how good is the next swap?"
+
+```text
+avg reward = mean(simulate_action_reward(policy_chosen_action) over the fixed eval boards)
+```
+
+The fixed board seeds were:
+
+```text
+20000, 20001, 20002, 20003, 20004, 20005, 20006, 20007, 20008, 20009
+```
+
+Special-candy injection is deterministic too. For board seed `s`, the eval uses `special_seed = s + 50000`, so every policy sees the same normal candies and the same injected specials.
+
+Eval environment:
+
+| Setting | Value |
+| --- | --- |
+| Board size | `8x8` |
+| Normal colors | `0..5` |
+| Action space | Adjacent swaps only, 112 possible swaps |
+| Eval horizon | One selected swap per board |
+| Specials per eval board | 1 to 3 injected specials |
+| Invalid action score | `-5` |
+
 | Policy | Avg reward | Notes |
 | --- | ---: | --- |
 | Greedy | 337.9 | Searches all legal swaps and chooses the highest immediate simulated reward. |
@@ -34,6 +59,45 @@ The final comparison was run on a fixed set of 10 special-candy boards. Each pol
 | DQN | 90.4 | DQN checkpoint from the repo's baseline training flow. |
 
 The released adapter is the `final_plus30` checkpoint. It beat random, PPO, and DQN on this fixed eval, and landed close to the greedy immediate-reward baseline.
+
+## Reward Function
+
+The reward is computed by the real `CandyEnv` cascade resolver.
+
+For a normal match/cascade clear:
+
+```text
+reward += removed_candies^2 + 10
+```
+
+For a direct special activation before normal cascades continue:
+
+```text
+reward += removed_candies^2 + special_bonus
+```
+
+Special bonuses are:
+
+| Special | Bonus |
+| --- | ---: |
+| Horizontal striped | 20 |
+| Vertical striped | 20 |
+| Wrapped | 40 |
+| Black/color-bomb | 60 |
+
+After each clear, gravity and refill run, then the environment keeps resolving cascades until no match remains. That means a swap creating a large clear or triggering specials can score much more than a basic 3-candy match.
+
+Examples:
+
+| Event | Reward contribution |
+| --- | ---: |
+| Basic 3-candy normal match | `3^2 + 10 = 19` |
+| 4-candy normal match | `4^2 + 10 = 26` |
+| 5-candy normal match | `5^2 + 10 = 35` |
+| Horizontal stripe clears 8 candies directly | `8^2 + 20 = 84` |
+| Wrapped special clears a 3x3 area directly | `9^2 + 40 = 121` |
+
+`simulate_action_reward(action)` temporarily applies the swap, resolves those clears/cascades, returns the reward, and then restores the original board state. Greedy uses this for every legal action; the Qwen prompt also includes immediate simulated rewards in the legal-action list.
 
 ## How The Qwen Policy Works
 
