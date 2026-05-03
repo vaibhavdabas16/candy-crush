@@ -188,7 +188,33 @@ def load_lora_model(
     lora_rank: int,
     use_4bit: bool,
     beta_kl: float,
+    device: str = "auto",
+    dtype: str = "auto",
+    is_trainable: bool = True,
 ):
+    if device == "auto":
+        if torch.cuda.is_available():
+            device = "cuda"
+        elif torch.backends.mps.is_available():
+            device = "mps"
+        else:
+            device = "cpu"
+
+    if dtype == "auto":
+        if device == "cuda":
+            torch_dtype = torch.bfloat16
+        elif device == "mps":
+            torch_dtype = torch.float16
+        else:
+            torch_dtype = torch.float32
+    else:
+        torch_dtype = {
+            "float32": torch.float32,
+            "float16": torch.float16,
+            "bfloat16": torch.bfloat16,
+        }[dtype]
+
+    use_4bit = bool(use_4bit and device == "cuda")
     quantization_config = None
     if use_4bit:
         quantization_config = BitsAndBytesConfig(
@@ -200,8 +226,8 @@ def load_lora_model(
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         quantization_config=quantization_config,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
+        torch_dtype=torch_dtype,
+        device_map="auto" if device == "cuda" else None,
         trust_remote_code=True,
         attn_implementation="sdpa",
     )
@@ -210,7 +236,10 @@ def load_lora_model(
         model = prepare_model_for_kbit_training(model)
 
     if adapter_path:
-        return PeftModel.from_pretrained(model, adapter_path, is_trainable=True)
+        model = PeftModel.from_pretrained(model, adapter_path, is_trainable=is_trainable)
+        if device != "cuda":
+            model.to(device)
+        return model
 
     peft_config = LoraConfig(
         r=lora_rank,
@@ -221,6 +250,8 @@ def load_lora_model(
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
     )
     model = get_peft_model(model, peft_config)
+    if device != "cuda":
+        model.to(device)
     model.print_trainable_parameters()
     return model
 
@@ -295,6 +326,7 @@ def evaluate_llm_adapter(args: argparse.Namespace, adapter_path: str | None, see
         args.lora_rank,
         not args.no_4bit,
         beta_kl=0.0,
+        is_trainable=False,
     )
     model.eval()
 
