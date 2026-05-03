@@ -9,6 +9,7 @@ import numpy as np
 from agents.baselines import GreedyPolicy, RandomPolicy
 from agents.dqn_agent import DQNAgent
 from agents.grpo_agent import GRPOAgent
+from agents.llm_grpo_agent import LLMGRPOAgent
 from agents.ppo_agent import load_ppo
 from env.candy_env import CandyEnv
 
@@ -143,7 +144,7 @@ class CandyViewer:
         self._animate_and_step(action)
 
     def _agent_action(self) -> int:
-        if isinstance(self.policy, (RandomPolicy, GreedyPolicy, DQNAgent, GRPOAgent)):
+        if isinstance(self.policy, (RandomPolicy, GreedyPolicy, DQNAgent, GRPOAgent, LLMGRPOAgent)):
             action, _ = self.policy.predict(self.obs, env=self.env, deterministic=True)
             return int(action)
 
@@ -450,7 +451,19 @@ class CandyViewer:
         return None
 
 
-def load_policy(agent_name: str, dqn_path: str | Path, ppo_path: str | Path, env: CandyEnv, grpo_path: str | Path = "models/grpo_candy.pt"):
+def load_policy(
+    agent_name: str,
+    dqn_path: str | Path,
+    ppo_path: str | Path,
+    env: CandyEnv,
+    grpo_path: str | Path = "models/grpo_candy.pt",
+    llm_grpo_path: str | Path = "models/llm_grpo_candy/qwen35_9b/final_plus30",
+    llm_model_name: str = "Qwen/Qwen3.5-9B",
+    llm_use_4bit: bool = True,
+    llm_device: str = "auto",
+    llm_dtype: str = "auto",
+    llm_max_new_tokens: int = 32,
+):
     agent_name = agent_name.lower()
     if agent_name == "manual":
         return None
@@ -473,4 +486,21 @@ def load_policy(agent_name: str, dqn_path: str | Path, ppo_path: str | Path, env
         if not path.exists():
             raise FileNotFoundError(f"GRPO model not found: {path}")
         return GRPOAgent.load(path)
+    if agent_name == "llm_grpo":
+        path = Path(llm_grpo_path)
+        is_hf_repo_id = (
+            isinstance(llm_grpo_path, str)
+            and llm_grpo_path.count("/") == 1
+            and not llm_grpo_path.startswith(".")
+        )
+        if not is_hf_repo_id and not path.exists():
+            raise FileNotFoundError(f"LLM GRPO adapter not found: {path}")
+        return LLMGRPOAgent(
+            llm_grpo_path if is_hf_repo_id else path,
+            model_name=llm_model_name,
+            use_4bit=llm_use_4bit,
+            device=llm_device,
+            dtype=llm_dtype,
+            max_new_tokens=llm_max_new_tokens,
+        )
     raise ValueError(f"Unknown agent: {agent_name}")
