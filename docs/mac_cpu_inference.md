@@ -2,6 +2,14 @@
 
 This guide explains how to run the trained Candy Crush Qwen GRPO LoRA adapter directly on a MacBook or CPU-only machine.
 
+For efficient non-CUDA inference, prefer the merged `Q4_K_M` GGUF artifact:
+
+```text
+arnavm7/candy-crush-qwen35-grpo-lora/gguf/candy-crush-qwen35-grpo-Q4_K_M.gguf
+```
+
+That file is 5.3 GB, runs with llama.cpp, and does not need the Qwen base model or LoRA adapter to be loaded separately. Full commands are in [gguf_quantization.md](gguf_quantization.md).
+
 The trained adapter is:
 
 ```text
@@ -25,9 +33,9 @@ That means inference must load the Qwen 9B base model plus the LoRA adapter. The
 | Apple Silicon MacBook, 32 GB unified memory | Possible with MPS fp16, but close other apps and expect slow moves. |
 | Apple Silicon MacBook, 64 GB+ unified memory | Recommended Mac path. |
 | CPU-only, 32 GB RAM | Usually too tight or impractically slow. |
-| CPU-only, 64 GB+ RAM | Compatibility path only. Expect very slow inference. |
+| CPU-only, 64 GB+ RAM | Use the Q4_K_M GGUF with llama.cpp if possible. Transformers CPU is a compatibility path only. |
 
-For Mac and CPU, do not use `bitsandbytes` 4-bit. `bitsandbytes` is for CUDA/NVIDIA in this project. Use `--llm-no-4bit`.
+For Mac and CPU, do not use `bitsandbytes` 4-bit. `bitsandbytes` is for CUDA/NVIDIA in this project. Use the GGUF for efficiency, or use `--llm-no-4bit` for the Transformers/PEFT path.
 
 ## Install On Apple Silicon Mac
 
