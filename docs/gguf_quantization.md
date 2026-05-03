@@ -32,7 +32,8 @@ huggingface-cli download arnavm7/candy-crush-qwen35-grpo-lora \
   gguf/candy-crush-qwen35-grpo-Q4_K_M.gguf.sha256 \
   --local-dir models/llm_grpo_candy/qwen35_9b
 
-sha256sum -c models/llm_grpo_candy/qwen35_9b/gguf/candy-crush-qwen35-grpo-Q4_K_M.gguf.sha256
+cd models/llm_grpo_candy/qwen35_9b/gguf
+sha256sum -c candy-crush-qwen35-grpo-Q4_K_M.gguf.sha256
 ```
 
 On macOS, use `shasum -a 256` if `sha256sum` is not installed.
@@ -114,8 +115,8 @@ Quantize to Q4_K_M:
 Then record the checksum:
 
 ```bash
-sha256sum models/llm_grpo_candy/qwen35_9b/gguf/candy-crush-qwen35-grpo-Q4_K_M.gguf \
-  > models/llm_grpo_candy/qwen35_9b/gguf/candy-crush-qwen35-grpo-Q4_K_M.gguf.sha256
+cd models/llm_grpo_candy/qwen35_9b/gguf
+sha256sum candy-crush-qwen35-grpo-Q4_K_M.gguf > candy-crush-qwen35-grpo-Q4_K_M.gguf.sha256
 ```
 
 If conversion fails with an unrecognized Qwen3.5 tokenizer pre-tokenizer hash, use a newer llama.cpp build. The local conversion used Qwen3.5 architecture support and mapped tokenizer hash `1444df51289cfa8063b96f0e62b1125440111bc79a52003ea14b6eac7016fd5f` to `qwen35`.
