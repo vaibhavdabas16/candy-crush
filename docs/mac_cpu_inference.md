@@ -25,7 +25,7 @@ That means inference must load the Qwen 9B base model plus the LoRA adapter. The
 | Apple Silicon MacBook, 32 GB unified memory | Possible with MPS fp16, but close other apps and expect slow moves. |
 | Apple Silicon MacBook, 64 GB+ unified memory | Recommended Mac path. |
 | CPU-only, 32 GB RAM | Usually too tight or impractically slow. |
-| CPU-only, 64 GB+ RAM | Possible, but expect slow inference. |
+| CPU-only, 64 GB+ RAM | Compatibility path only. Expect very slow inference. |
 
 For Mac and CPU, do not use `bitsandbytes` 4-bit. `bitsandbytes` is for CUDA/NVIDIA in this project. Use `--llm-no-4bit`.
 
@@ -169,6 +169,8 @@ python run_gui.py \
 
 CPU-only inference works the same way, but it is much slower.
 
+Measured result from the Linux test machine used for this repo: with CUDA hidden, `--device cpu --no-4bit --dtype float32 --max-new-tokens 8` did not return one JSON recommendation within 10 minutes, so the run was stopped. That machine had enough RAM, but CPU-only Qwen 9B startup/generation was still not practical for interactive use.
+
 Install without `bitsandbytes`:
 
 ```bash
@@ -193,6 +195,8 @@ python run_gui.py \
   --llm-max-new-tokens 16 \
   --agent-delay 10.0
 ```
+
+Use this mainly to validate that the code path can load on machines without CUDA. For actual gameplay or GUI usage, use CUDA or Apple Silicon MPS.
 
 On some modern CPUs, `bfloat16` can reduce memory pressure:
 
