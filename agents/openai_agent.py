@@ -26,7 +26,7 @@ class OpenAIAgent:
         self,
         model: str = "gpt-5",
         api_key: str | None = None,
-        max_tokens: int = 80,
+        max_tokens: int = 4096,  # GPT-5+ reasoning models need ample budget
         temperature: float = 0.0,
         log_io: bool = False,
         log_prompt: bool = False,
@@ -63,12 +63,25 @@ class OpenAIAgent:
         self.last_was_valid = False
 
     def _generate(self, prompt: str) -> str:
-        resp = self.client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-        )
+        # GPT-5+ reasoning models reject `max_tokens` and `temperature`.
+        # Try the new `max_completion_tokens` first; if that errors out
+        # we fall back to the legacy parameter for older models.
+        kwargs: dict = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        try:
+            resp = self.client.chat.completions.create(
+                **kwargs, max_completion_tokens=self.max_tokens
+            )
+        except Exception as e:
+            msg = str(e).lower()
+            if "max_completion_tokens" in msg or "unsupported_parameter" in msg:
+                resp = self.client.chat.completions.create(
+                    **kwargs, max_tokens=self.max_tokens, temperature=self.temperature
+                )
+            else:
+                raise
         return resp.choices[0].message.content or ""
 
     def predict(

@@ -115,7 +115,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--gguf-max-new-tokens", type=int, default=24)
     p.add_argument("--gguf-log-io", action="store_true")
     p.add_argument("--openai-model", type=str, default="gpt-5")
-    p.add_argument("--openai-max-tokens", type=int, default=80)
+    p.add_argument("--openai-max-tokens", type=int, default=4096)
     p.add_argument("--openai-log-io", action="store_true")
     p.add_argument("--skip-grpo", action="store_true")
     p.add_argument("--skip-openai", action="store_true")
