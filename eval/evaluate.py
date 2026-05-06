@@ -31,7 +31,7 @@ from utils.special_boards import SpecialInjectionConfig, inject_random_specials
 
 DEFAULT_SEEDS = list(range(20000, 20010))
 DEFAULT_SPECIAL_OFFSET = 50000
-ALL_POLICIES = ["random", "greedy", "dqn", "ppo", "grpo_gguf"]
+ALL_POLICIES = ["random", "greedy", "dqn", "ppo", "grpo_gguf", "openai"]
 
 
 def make_env(seed: int, special_seed: int, max_moves: int) -> tuple[CandyEnv, np.ndarray]:
@@ -203,6 +203,19 @@ def build_policy(name: str, args: argparse.Namespace, env: CandyEnv):
             no_fallback=True,  # eval spec: count invalids, no greedy rescue
         )
         return agent, agent
+    if name == "openai":
+        from agents.openai_agent import OpenAIAgent
+
+        agent = OpenAIAgent(
+            model=args.openai_model,
+            max_tokens=args.openai_max_tokens,
+            temperature=0.0,
+            log_io=args.openai_log_io,
+            no_fallback=True,
+        )
+        # Re-use the grpo_agent slot so the same parse/model-invalid
+        # rate plumbing works for OpenAI runs.
+        return agent, agent
     raise ValueError(f"Unknown policy: {name}")
 
 
@@ -229,6 +242,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--gguf-max-new-tokens", type=int, default=24)
     parser.add_argument("--gguf-log-io", action="store_true")
+    parser.add_argument(
+        "--openai-model",
+        type=str,
+        default="gpt-5",
+        help="OpenAI chat model id (e.g. gpt-5, gpt-4.1, gpt-4o).",
+    )
+    parser.add_argument("--openai-max-tokens", type=int, default=80)
+    parser.add_argument("--openai-log-io", action="store_true")
     parser.add_argument("--json-out", type=str, default=None, help="Optional path to dump full results as JSON.")
     return parser.parse_args()
 
